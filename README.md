@@ -1,4 +1,6 @@
-# Document Chain
+# Doc Chain Attestation Protocol
+
+![Document Chain Attestation](assets/2026-05-05-doc-chain-attestation.png)
 
 A generic Ethereum witness protocol for attestation-driven document chains.
 
@@ -12,7 +14,7 @@ Document Chain provides the reusable rail:
 - neutral event model helpers
 - vendorable stdlib-only reference code
 
-Projects such as the RSO Archive define their own `docChainId` profile:
+Projects such as the om.pub RSO Archive define their own `docChainId` profile:
 
 - what `contentHash` means
 - how documents are canonicalized
