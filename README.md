@@ -64,11 +64,11 @@ struct DocAttestation {
 }
 ```
 
-The contract computes `blockHash` from `DocBlock`. Because `parentHash` is part
-of the hashed block, changing any historical block changes every descendant
-block hash. `docRef` is the profile-defined reference used for grouping,
-browsing, and querying blocks; `blockHash` is identity and `parentHash` is
-ancestry.
+For each attestation, the contract emits the `hashStruct(DocBlock)` value as
+`blockHash`. Because `parentHash` is part of the hashed block, changing any
+historical block changes every descendant block hash. `docRef` is the
+profile-defined reference used for grouping, browsing, and querying blocks;
+`blockHash` is identity and `parentHash` is ancestry.
 
 ## Reuse Model
 
