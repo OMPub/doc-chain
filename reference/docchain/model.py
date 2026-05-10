@@ -1,4 +1,4 @@
-"""Generic Document Chain event model helpers.
+"""Generic Doc Chain event model helpers.
 
 This module intentionally contains no project-specific scoring or validation.
 Individual Doc Chain indexers and profilers should compose these neutral records with their own rules.
@@ -23,7 +23,7 @@ class DocBlock:
 
 
 @dataclass(frozen=True)
-class DocumentAttestation:
+class DocAttestation:
     attester: str
     doc_block: DocBlock
     uri: str
@@ -31,7 +31,7 @@ class DocumentAttestation:
 
 
 @dataclass(frozen=True)
-class DocumentAttested:
+class DocAttested:
     doc_chain_id: str
     attester: str
     doc_ref: int
@@ -46,9 +46,9 @@ class DocumentAttested:
     log_index: int
 
 
-def normalize_document_attested(raw: Mapping[str, object]) -> DocumentAttested:
+def normalize_doc_attested(raw: Mapping[str, object]) -> DocAttested:
     """Build a neutral event record from an already-decoded log mapping."""
-    return DocumentAttested(
+    return DocAttested(
         doc_chain_id=str(_field(raw, "doc_chain_id", "docChainId")),
         attester=str(raw["attester"]),
         doc_ref=int(_field(raw, "doc_ref", "docRef")),

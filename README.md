@@ -1,10 +1,10 @@
 # Doc Chain Attestation Protocol
 
-![Document Chain Attestation](assets/2026-05-05-doc-chain-attestation.png)
+![Doc Chain Attestation](assets/2026-05-05-doc-chain-attestation.png)
 
-A generic Ethereum witness protocol for attestation-driven document chains.
+A generic Ethereum witness protocol for attestation-driven doc chains.
 
-Document Chain provides the reusable rail:
+Doc Chain provides the reusable rail:
 
 - a minimal append-only Ethereum contract
 - a `DocBlock` model with parent-hash linkage
@@ -17,24 +17,33 @@ Document Chain provides the reusable rail:
 Projects such as the om.pub RSO Archive define their own `docChainId` profile:
 
 - what `contentHash` means
-- how documents are canonicalized
+- how docs are canonicalized
 - how parentage is validated
 - which attestations are eligible
 - how competing branches are scored
 
-Document Chain does **not** define one universal consensus mechanism. It
-publishes signed, timestamped claims. Each document chain supplies its own
+Doc Chain does **not** define one universal consensus mechanism. It
+publishes signed, timestamped claims. Each doc chain supplies its own
 validation and canonicality rules.
 
 Start with [docs/protocol.md](docs/protocol.md) for the contract boundary,
 typed-data model, event semantics, and profile responsibilities.
 
+Ethereum build, test, deployment, and audit notes live in
+[docs/ethereum.md](docs/ethereum.md), [docs/audit.md](docs/audit.md),
+[docs/threat-model.md](docs/threat-model.md), and
+[docs/release-checklist.md](docs/release-checklist.md).
+
 ## Repository Layout
 
 ```text
+abi/                committed contract ABI
 contracts/          Ethereum contract source
+deployments/        deployed address registry
 docs/               protocol and integration docs
+fixtures/           deterministic EIP-712 fixtures
 reference/          stdlib-only event models and ABI constants
+scripts/            stdlib-only project maintenance scripts
 ```
 
 ## Core Model
@@ -47,7 +56,7 @@ struct DocBlock {
     bytes32 contentHash;
 }
 
-struct DocumentAttestation {
+struct DocAttestation {
     address attester;
     DocBlock docBlock;
     string uri;

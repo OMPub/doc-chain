@@ -20,7 +20,7 @@ indexer/
 The project indexer imports local vendored helpers and applies its own profile:
 
 ```python
-from vendor.docchain.model import normalize_document_attested
+from vendor.docchain.model import normalize_doc_attested
 from indexer.project_profile import score_branches
 ```
 

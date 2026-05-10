@@ -1,7 +1,7 @@
-# Document Chain Protocol
+# Doc Chain Protocol
 
-Document Chain is a generic witness log for document chains. It gives projects
-a common way to publish signed claims about hash-linked documents while leaving
+Doc Chain is a generic witness log for doc chains. It gives projects
+a common way to publish signed claims about hash-linked docs while leaving
 validation and consensus rules to each `docChainId` profile.
 
 ## Contract Boundary
@@ -16,12 +16,12 @@ It does:
 - emit append-only events
 - expose enough event data for off-chain indexers and viewers
 
-Document Chain is not a full blockchain consensus protocol.
+Doc Chain is not a full blockchain consensus protocol.
 
 It does not:
 
 - choose the canonical branch
-- validate external document bytes onchain
+- validate external doc bytes onchain
 - fetch from storage networks
 - define a universal reputation or voting system
 - know about any specific NFT collection or community metric
@@ -44,10 +44,10 @@ signatures cannot be replayed across chains or contract deployments:
 
 ```solidity
 struct EIP712Domain {
-    string name;               // "Document Chain"
+    string name;               // "Doc Chain"
     string version;            // e.g. "1"
     uint256 chainId;           // Ethereum chain id
-    address verifyingContract; // deployed Document Chain contract
+    address verifyingContract; // deployed Doc Chain contract
 }
 ```
 
@@ -72,7 +72,7 @@ Field meanings:
 - `docRef`: profile-defined unsigned 64-bit reference for grouping, browsing,
   and querying blocks within a `docChainId`
 - `parentHash`: previous `DocBlock` hash, or `bytes32(0)` for genesis
-- `contentHash`: profile-defined digest of the document payload
+- `contentHash`: profile-defined digest of the doc payload
 
 The contract computes:
 
@@ -82,7 +82,7 @@ blockHash = hashStruct(DocBlock)
 
 Because `parentHash` is inside the block being hashed, any change to a middle
 block changes that block hash and every descendant hash. This is the protocol's
-document-chain linkage.
+doc-chain linkage.
 
 `docRef` is not the block identity and does not establish ancestry. Block
 identity is `blockHash`; ancestry is `parentHash`. The `docRef` lets a profile
@@ -93,7 +93,7 @@ indexers can decode `docRef` into richer labels such as dates, names, or paths.
 ## Attestation
 
 ```solidity
-struct DocumentAttestation {
+struct DocAttestation {
     address attester;
     DocBlock docBlock;
     string uri;
@@ -110,7 +110,7 @@ the profile rules for `contentHash`.
 
 `uriHash` is deliberately not part of the signed struct. The contract computes
 `keccak256(bytes(uri))` after enforcing the URI size cap, uses that computed
-value for duplicate prevention, and emits it in `DocumentAttested`.
+value for duplicate prevention, and emits it in `DocAttested`.
 
 The contract must reject any attestation where `bytes(uri).length > 8192`.
 That 8 KiB cap keeps event payloads and downstream indexes bounded while still
@@ -172,7 +172,7 @@ bytes32 key = keccak256(
 );
 ```
 
-This lets a signer attest distinct publications for the same document block,
+This lets a signer attest distinct publications for the same doc block,
 such as Arweave and IPFS copies, while blocking repeated attestations to the
 same publication claim.
 
@@ -181,7 +181,7 @@ same publication claim.
 The contract must emit an append-only event for every successful attestation:
 
 ```solidity
-event DocumentAttested(
+event DocAttested(
     bytes32 indexed docChainId,
     address indexed attester,
     uint64 indexed docRef,
@@ -201,16 +201,16 @@ The event must be sufficient for indexers and viewers to reconstruct witness
 history without heavy contract read APIs. From events alone, an indexer can
 reconstruct:
 
-- every document chain that has attestations
-- every document reference that has attestations
-- every attester for each document reference
+- every doc chain that has attestations
+- every doc reference that has attestations
+- every attester for each doc reference
 - who paid gas for each submission
-- every candidate `blockHash` for a document reference
+- every candidate `blockHash` for a doc reference
 - the `parentHash` each candidate claims to extend
 - each `contentHash` and URI attested for that candidate
 - hash-only attestations where `uri == ""`
 - duplicate-prevention identity by recomputing the attestation key
-- fork/dispute state by grouping multiple block candidates for a document
+- fork/dispute state by grouping multiple block candidates for a doc
   reference
 
 A neutral read model can be generated purely from logs:
@@ -230,13 +230,13 @@ docChainId
 
 The contract does not need large paginated reference reads for normal rendering.
 Projects can publish compact JSON indexes from events and use targeted RPC
-calls when a viewer wants proof for a specific event or document reference.
+calls when a viewer wants proof for a specific event or doc reference.
 
 ## Profiles
 
 Each `docChainId` defines a profile outside the contract:
 
-- document canonicalization
+- doc canonicalization
 - content hash algorithm
 - `docRef` meaning and decoding
 - genesis rule
@@ -257,7 +257,7 @@ where `profileURI` points to human-readable profile documentation, for example:
 https://om.pub/rso/docchain/v1
 ```
 
-That URI can describe the document canonicalization rules, `docRef` decoding,
+That URI can describe the doc canonicalization rules, `docRef` decoding,
 URI interpretation, eligible attesters, and branch scoring for the profile.
 `bytes32` is sufficient because `keccak256` produces a 32-byte identifier. The
 profile URI is not recoverable from `docChainId`; projects must distribute the

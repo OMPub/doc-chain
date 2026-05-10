@@ -1,5 +1,5 @@
-"""Stdlib-only reference helpers for Document Chain indexers."""
+"""Stdlib-only reference helpers for Doc Chain indexers."""
 
-from .model import DocBlock, DocumentAttestation, DocumentAttested
+from .model import DocAttestation, DocAttested, DocBlock, normalize_doc_attested
 
-__all__ = ["DocBlock", "DocumentAttestation", "DocumentAttested"]
+__all__ = ["DocBlock", "DocAttestation", "DocAttested", "normalize_doc_attested"]
