@@ -1,0 +1,23 @@
+.env
+.env.*
+!.env.example
+
+# Solidity tool output
+out/
+cache/
+build/
+broadcast/
+.gas-snapshot
+
+# Python verification artifacts
+__pycache__/
+*.py[cod]
+
+# Editor and OS noise
+.DS_Store
+.idea/
+.vscode/
+
+# Dependency directories should not be committed.
+node_modules/
+lib/
