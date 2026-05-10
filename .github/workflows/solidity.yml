@@ -1,0 +1,56 @@
+name: Solidity
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  foundry:
+    name: Foundry
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.7.0
+
+      - name: Show Forge version
+        run: forge --version
+
+      - name: Check formatting
+        run: make fmt-check
+
+      - name: Build
+        run: forge build --sizes
+
+      - name: Test
+        run: forge test -vvv
+
+      - name: Check committed ABI
+        run: make abi-check-forge
+
+  slither:
+    name: Slither
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Run Slither
+        uses: crytic/slither-action@v0.4.2
+        with:
+          target: contracts/src/DocChain.sol
+          slither-config: slither.config.json
+          solc-version: "0.8.35"
+          slither-args: --compile-force-framework solc --solc-args "--base-path . --evm-version paris --optimize" --exclude timestamp
