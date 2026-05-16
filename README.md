@@ -12,6 +12,7 @@ Doc Chain provides the reusable rail:
 - EOA and EIP-1271 signature support
 - contract-level deadlines and duplicate prevention
 - neutral event model helpers
+- dependency-free event indexing helpers
 - vendorable stdlib-only reference code
 
 Projects such as the om.pub RSO Archive define their own `docChainId` profile:
@@ -21,6 +22,14 @@ Projects such as the om.pub RSO Archive define their own `docChainId` profile:
 - how parentage is validated
 - which attestations are eligible
 - how competing branches are scored
+
+The current RSO v1 profile is:
+
+```text
+profileURI = https://om.pub/rso/doc-chain/v1
+docChainId = keccak256(profileURI)
+           = 0x8621c2851714436d60da45cf0e11253114a4f2002f73ddc159b4dc88fea5611d
+```
 
 Doc Chain does **not** define one universal consensus mechanism. It
 publishes signed, timestamped claims. Each doc chain supplies its own
@@ -44,6 +53,7 @@ docs/               protocol and integration docs
 fixtures/           deterministic EIP-712 fixtures
 reference/          stdlib-only event models and ABI constants
 scripts/            stdlib-only project maintenance scripts
+tests/              stdlib unit tests for reference helpers
 ```
 
 ## Core Model
@@ -80,7 +90,52 @@ dependency-free and reviewable.
 vendor/docchain/
   VERSION
   abi.py
+  indexer.py
+  logs.py
   model.py
 ```
 
 Profile-specific code lives in the consuming project.
+
+## Event Indexing
+
+`scripts/index_events.py` can scan a deployed `DocChain` contract with raw
+Ethereum JSON-RPC and emit neutral `DocAttested` records:
+
+```bash
+python3 scripts/index_events.py \
+  --rpc-url https://... \
+  --address 0x... \
+  --from-block 123456 \
+  --format jsonl
+```
+
+To quickly see which Ethereum blocks contain attestations:
+
+```bash
+python3 scripts/index_events.py \
+  --rpc-url https://... \
+  --address 0x... \
+  --from-block 123456 \
+  --format blocks
+```
+
+## Attestation Scripts
+
+The operator flow is split into explicit steps:
+
+```bash
+make prepare-attestation PREPARE_ATTESTATION_ARGS="\
+--deployment deployments/sepolia.json \
+--doc-chain-id 0x... \
+--doc-ref 20260514000000 \
+--content-hash 0x... \
+--uri ar://..."
+
+make sign-attestation
+make submit-attestation SUBMIT_ATTESTATION_ARGS="--dry-run"
+make submit-attestation
+```
+
+Preparation is stdlib-only Python. Signing and submission use Foundry `cast` so
+the repo does not carry local Keccak-256 or secp256k1 implementations.

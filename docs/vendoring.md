@@ -10,6 +10,8 @@ Recommended consuming layout:
 vendor/docchain/
   VERSION
   abi.py
+  indexer.py
+  logs.py
   model.py
 
 indexer/
@@ -20,6 +22,7 @@ indexer/
 The project indexer imports local vendored helpers and applies its own profile:
 
 ```python
+from vendor.docchain.logs import decode_doc_attested_log
 from vendor.docchain.model import normalize_doc_attested
 from indexer.project_profile import score_branches
 ```

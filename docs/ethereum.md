@@ -105,6 +105,52 @@ make analyze
 The Slither target intentionally analyzes `contracts/src/DocChain.sol`
 instead of test or script helpers.
 
+## Event Indexing
+
+The generic indexer is dependency-free and uses raw Ethereum JSON-RPC:
+
+```bash
+python3 scripts/index_events.py \
+  --rpc-url https://... \
+  --address 0x... \
+  --from-block 123456 \
+  --format jsonl
+```
+
+It can also print just the Ethereum block numbers that contain attestations:
+
+```bash
+python3 scripts/index_events.py \
+  --rpc-url https://... \
+  --address 0x... \
+  --from-block 123456 \
+  --format blocks
+```
+
+For long-running jobs, use confirmations and a checkpoint:
+
+```bash
+python3 scripts/index_events.py \
+  --deployment deployments/sepolia.json \
+  --rpc-url "$SEPOLIA_RPC_URL" \
+  --confirmations 12 \
+  --checkpoint .docchain-sepolia.checkpoint.json \
+  --format jsonl
+```
+
+Checkpoints record the contract address and topic filters. Reuse a checkpoint
+only with the same address, `docChainId`, attester, and `docRef` filter set.
+
+Topic filters are available for `docChainId`, `attester`, and `docRef`:
+
+```bash
+python3 scripts/index_events.py \
+  --deployment deployments/sepolia.json \
+  --rpc-url "$SEPOLIA_RPC_URL" \
+  --doc-chain-id 0x... \
+  --doc-ref 20260511000000
+```
+
 ## ABI And Fixtures
 
 Regenerate the committed ABI after any contract ABI change:
@@ -127,15 +173,18 @@ generation.
 
 ## Testnet Deployment
 
-Use Sepolia for application-contract testing. Use Hoodi only when the workflow
-specifically needs the maintained staking/protocol testnet. Check the
-[ethereum.org networks page](https://ethereum.org/developers/docs/networks/)
-before deployment; as of 2026-05-06, Holesky is deprecated.
+Use Sepolia for application-contract testing. For any other EVM-compatible
+testnet, use the generic `deploy-testnet` target with an explicit chain ID.
 
 ```bash
 SEPOLIA_RPC_URL=https://... PRIVATE_KEY=0x... make deploy-sepolia
-HOODI_RPC_URL=https://... PRIVATE_KEY=0x... make deploy-hoodi
 ```
+
+Operator targets source an ignored local `.env` file inside the recipe shell, so
+operators can copy `.env.example`, fill in local values, and run the same
+targets without exporting variables in each shell. The Makefile intentionally
+does not parse `.env` as Make syntax, which avoids exposing key material through
+Make introspection output.
 
 For any EVM-compatible testnet, use a direct RPC URL:
 
@@ -143,15 +192,84 @@ For any EVM-compatible testnet, use a direct RPC URL:
 RPC_URL=https://... EXPECTED_CHAIN_ID=12345 PRIVATE_KEY=0x... make deploy-testnet
 ```
 
+Before broadcasting a generic deployment, run a dry-run against the target RPC:
+
+```bash
+RPC_URL=https://... PRIVATE_KEY=0x... make deploy-dry-run
+```
+
 The deploy script reads `PRIVATE_KEY` inside Foundry and broadcasts
 `new DocChain()`. Keep private keys in the local shell or an untracked
 `.env` file.
-The deployment Make targets preflight `cast chain-id` before broadcasting:
-Sepolia must report `11155111`, Hoodi must report `560048`, and generic
+The deployment Make targets check required environment values and preflight
+`cast chain-id` before broadcasting: Sepolia must report `11155111`, and generic
 testnet deployments must provide `EXPECTED_CHAIN_ID`.
 
 After deployment and source verification, commit a deployment registry file
 under `deployments/`.
+
+The event indexer can use the registry file directly. Its `blockNumber` value is
+used as the default scan start block.
+
+## Attestation Workflow
+
+The repo keeps attestation preparation, signing, and submission separate:
+
+- `scripts/prepare_attestation.py` writes EIP-712 typed data and never handles a
+  private key.
+- `scripts/sign_attestation.py` signs the typed data with Foundry `cast`.
+- `scripts/submit_attestation.py` submits the signed envelope with Foundry
+  `cast`.
+
+Set an attester address in your shell or `.env`:
+
+```bash
+DOCCHAIN_ATTESTER=0x...
+```
+
+Prepare typed data:
+
+```bash
+make prepare-attestation PREPARE_ATTESTATION_ARGS="\
+--deployment deployments/sepolia.json \
+--doc-chain-id 0x... \
+--doc-ref 20260514000000 \
+--content-hash 0x... \
+--uri ar://..."
+```
+
+This writes `build/attestations/attestation.prepared.json`.
+Pass `--attester 0x...` in `PREPARE_ATTESTATION_ARGS` if you do not set
+`DOCCHAIN_ATTESTER`.
+
+Sign it:
+
+```bash
+make sign-attestation
+```
+
+This reads `PRIVATE_KEY` by default and writes
+`build/attestations/attestation.signed.json`. For a prompt instead of an
+environment variable:
+
+```bash
+python3 scripts/sign_attestation.py --interactive
+```
+
+Simulate submission:
+
+```bash
+make submit-attestation SUBMIT_ATTESTATION_ARGS="--dry-run"
+```
+
+Broadcast submission:
+
+```bash
+make submit-attestation
+```
+
+The submitter can be different from the attester. `submit_attestation.py` uses
+`SUBMITTER_PRIVATE_KEY` if set, otherwise it falls back to `PRIVATE_KEY`.
 
 ## Verification
 

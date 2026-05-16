@@ -18,3 +18,7 @@ DOC_ATTESTATION_TYPE = (
 DOC_ATTESTED_EVENT = (
     "DocAttested(bytes32,address,uint64,address,bytes32,bytes32,bytes32,bytes32,string)"
 )
+
+DOC_ATTESTED_EVENT_TOPIC0 = (
+    "0x003c1eb39369e9f39930ebf222b333215cb95fdc00894d4fe215b8659c452858"
+)

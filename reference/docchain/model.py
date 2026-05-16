@@ -14,6 +14,12 @@ def _field(raw: Mapping[str, object], snake_name: str, camel_name: str) -> objec
     return raw[camel_name]
 
 
+def _optional_field(raw: Mapping[str, object], snake_name: str, camel_name: str) -> object:
+    if snake_name in raw:
+        return raw[snake_name]
+    return raw.get(camel_name, "")
+
+
 @dataclass(frozen=True)
 class DocBlock:
     doc_chain_id: str
@@ -44,6 +50,7 @@ class DocAttested:
     block_number: int
     transaction_hash: str
     log_index: int
+    ethereum_block_hash: str = ""
 
 
 def normalize_doc_attested(raw: Mapping[str, object]) -> DocAttested:
@@ -61,4 +68,7 @@ def normalize_doc_attested(raw: Mapping[str, object]) -> DocAttested:
         block_number=int(_field(raw, "block_number", "blockNumber")),
         transaction_hash=str(_field(raw, "transaction_hash", "transactionHash")),
         log_index=int(_field(raw, "log_index", "logIndex")),
+        ethereum_block_hash=str(
+            _optional_field(raw, "ethereum_block_hash", "ethereumBlockHash")
+        ),
     )

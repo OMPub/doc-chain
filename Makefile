@@ -1,9 +1,18 @@
-SOLC ?= solc
+PYTHON ?= python3
+HOMEBREW_PREFIX ?= $(shell if [ -d /opt/homebrew/bin ]; then printf /opt/homebrew; elif [ -d /usr/local/bin ]; then printf /usr/local; fi)
+SOLC ?= $(shell if command -v solc >/dev/null 2>&1; then command -v solc; elif [ -n "$(HOMEBREW_PREFIX)" ] && [ -x "$(HOMEBREW_PREFIX)/bin/solc" ]; then printf "$(HOMEBREW_PREFIX)/bin/solc"; else printf solc; fi)
+SLITHER ?= $(shell if command -v slither >/dev/null 2>&1; then command -v slither; elif [ -n "$(HOMEBREW_PREFIX)" ] && [ -x "$(HOMEBREW_PREFIX)/bin/slither" ]; then printf "$(HOMEBREW_PREFIX)/bin/slither"; else printf slither; fi)
+ENV_FILE ?= .env
+LOAD_ENV = set -a; if [ -f "$(ENV_FILE)" ]; then . "$(ENV_FILE)"; fi; set +a;
+
 FOUNDRY_BIN ?= $(HOME)/.foundry/bin
 FORGE ?= $(FOUNDRY_BIN)/forge
 CAST ?= $(FOUNDRY_BIN)/cast
-SLITHER ?= slither
+ifneq ($(HOMEBREW_PREFIX),)
+PATH := $(FOUNDRY_BIN):$(HOMEBREW_PREFIX)/bin:$(HOMEBREW_PREFIX)/sbin:$(PATH)
+else
 PATH := $(FOUNDRY_BIN):$(PATH)
+endif
 export PATH
 SOLC_EVM_VERSION ?= paris
 SOLC_BUILD_DIR ?= build/solc
@@ -12,10 +21,16 @@ CONTRACT_ABI := abi/DocChain.json
 GENERATED_ABI := $(SOLC_BUILD_DIR)/DocChain.abi
 FORGE_ARTIFACT := out/DocChain.sol/DocChain.json
 SEPOLIA_CHAIN_ID := 11155111
-HOODI_CHAIN_ID := 560048
+INDEX_ARGS ?=
+PREPARED_ATTESTATION ?= build/attestations/attestation.prepared.json
+SIGNED_ATTESTATION ?= build/attestations/attestation.signed.json
+PREPARE_ATTESTATION_ARGS ?=
+SIGN_ATTESTATION_ARGS ?=
+SUBMIT_ATTESTATION_ARGS ?=
 
-.PHONY: abi abi-check analyze build build-solc check clean coverage deploy-hoodi
-.PHONY: abi-check-forge deploy-sepolia deploy-testnet fmt fmt-check test
+.PHONY: abi abi-check analyze build build-solc check clean coverage deploy-dry-run
+.PHONY: abi-check-forge deploy-sepolia deploy-testnet fmt fmt-check index-events
+.PHONY: prepare-attestation sign-attestation submit-attestation test test-python
 
 build:
 	$(FORGE) build
@@ -28,6 +43,9 @@ build-solc:
 
 test:
 	$(FORGE) test
+
+test-python:
+	$(PYTHON) -m unittest discover -s tests
 
 coverage:
 	RUST_LOG=error $(FORGE) coverage --report summary --skip script
@@ -50,35 +68,66 @@ abi-check-forge:
 	python3 scripts/check_abi.py $(FORGE_ARTIFACT) $(CONTRACT_ABI)
 
 deploy-testnet:
-	@if [ -z "$(EXPECTED_CHAIN_ID)" ]; then \
+	@$(LOAD_ENV) \
+	if [ -z "$$PRIVATE_KEY" ]; then \
+		echo "Set PRIVATE_KEY before deploy-testnet"; \
+		exit 1; \
+	fi
+	@$(LOAD_ENV) \
+	if [ -z "$$RPC_URL" ]; then \
+		echo "Set RPC_URL before deploy-testnet"; \
+		exit 1; \
+	fi
+	@$(LOAD_ENV) \
+	if [ -z "$$EXPECTED_CHAIN_ID" ]; then \
 		echo "Set EXPECTED_CHAIN_ID=<chain id> before deploy-testnet"; \
 		exit 1; \
 	fi
-	@actual="$$($(CAST) chain-id --rpc-url "$(RPC_URL)")"; \
-	if [ "$$actual" != "$(EXPECTED_CHAIN_ID)" ]; then \
-		echo "Refusing deploy-testnet: expected chain $(EXPECTED_CHAIN_ID), got $$actual"; \
+	@$(LOAD_ENV) \
+	actual="$$($(CAST) chain-id --rpc-url "$$RPC_URL")"; \
+	if [ "$$actual" != "$$EXPECTED_CHAIN_ID" ]; then \
+		echo "Refusing deploy-testnet: expected chain $$EXPECTED_CHAIN_ID, got $$actual"; \
 		exit 1; \
 	fi
+	@$(LOAD_ENV) \
 	$(FORGE) script contracts/script/DeployDocChain.s.sol:DeployDocChain \
-		--rpc-url "$(RPC_URL)" --broadcast
+		--rpc-url "$$RPC_URL" --broadcast
 
 deploy-sepolia:
-	@actual="$$($(CAST) chain-id --rpc-url sepolia)"; \
+	@$(LOAD_ENV) \
+	if [ -z "$$PRIVATE_KEY" ]; then \
+		echo "Set PRIVATE_KEY before deploy-sepolia"; \
+		exit 1; \
+	fi
+	@$(LOAD_ENV) \
+	if [ -z "$$SEPOLIA_RPC_URL" ]; then \
+		echo "Set SEPOLIA_RPC_URL before deploy-sepolia"; \
+		exit 1; \
+	fi
+	@$(LOAD_ENV) \
+	actual="$$($(CAST) chain-id --rpc-url "$$SEPOLIA_RPC_URL")"; \
 	if [ "$$actual" != "$(SEPOLIA_CHAIN_ID)" ]; then \
 		echo "Refusing deploy-sepolia: expected chain $(SEPOLIA_CHAIN_ID), got $$actual"; \
 		exit 1; \
 	fi
+	@$(LOAD_ENV) \
 	$(FORGE) script contracts/script/DeployDocChain.s.sol:DeployDocChain \
-		--rpc-url sepolia --broadcast
+		--rpc-url "$$SEPOLIA_RPC_URL" --broadcast
 
-deploy-hoodi:
-	@actual="$$($(CAST) chain-id --rpc-url hoodi)"; \
-	if [ "$$actual" != "$(HOODI_CHAIN_ID)" ]; then \
-		echo "Refusing deploy-hoodi: expected chain $(HOODI_CHAIN_ID), got $$actual"; \
+deploy-dry-run:
+	@$(LOAD_ENV) \
+	if [ -z "$$PRIVATE_KEY" ]; then \
+		echo "Set PRIVATE_KEY before deploy-dry-run"; \
 		exit 1; \
 	fi
+	@$(LOAD_ENV) \
+	if [ -z "$$RPC_URL" ]; then \
+		echo "Set RPC_URL before deploy-dry-run"; \
+		exit 1; \
+	fi
+	@$(LOAD_ENV) \
 	$(FORGE) script contracts/script/DeployDocChain.s.sol:DeployDocChain \
-		--rpc-url hoodi --broadcast
+		--rpc-url "$$RPC_URL"
 
 analyze:
 	$(SLITHER) contracts/src/DocChain.sol --config-file slither.config.json \
@@ -86,7 +135,22 @@ analyze:
 		--solc $(SOLC) --solc-args "--base-path . --evm-version $(SOLC_EVM_VERSION) --optimize" \
 		--exclude timestamp
 
-check: build test fmt-check abi-check abi-check-forge analyze
+index-events:
+	@$(LOAD_ENV) $(PYTHON) scripts/index_events.py $(INDEX_ARGS)
+
+prepare-attestation:
+	@$(LOAD_ENV) $(PYTHON) scripts/prepare_attestation.py \
+		--out $(PREPARED_ATTESTATION) $(PREPARE_ATTESTATION_ARGS)
+
+sign-attestation:
+	@$(LOAD_ENV) $(PYTHON) scripts/sign_attestation.py $(PREPARED_ATTESTATION) \
+		--out $(SIGNED_ATTESTATION) $(SIGN_ATTESTATION_ARGS)
+
+submit-attestation:
+	@$(LOAD_ENV) $(PYTHON) scripts/submit_attestation.py $(SIGNED_ATTESTATION) \
+		$(SUBMIT_ATTESTATION_ARGS)
+
+check: build test test-python fmt-check abi-check abi-check-forge analyze
 
 clean:
 	rm -rf out cache build broadcast

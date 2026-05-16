@@ -12,6 +12,7 @@ broadcast/
 # Python verification artifacts
 __pycache__/
 *.py[cod]
+.docchain-*.checkpoint.json
 
 # Editor and OS noise
 .DS_Store
