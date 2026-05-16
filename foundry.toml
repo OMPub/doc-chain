@@ -18,4 +18,3 @@ int_types = "long"
 
 [rpc_endpoints]
 sepolia = "${SEPOLIA_RPC_URL}"
-hoodi = "${HOODI_RPC_URL}"

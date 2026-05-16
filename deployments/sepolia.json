@@ -1,0 +1,21 @@
+{
+  "contract": "DocChain",
+  "version": "1",
+  "chainId": 11155111,
+  "network": "sepolia",
+  "address": "0xaCE3a26Fe2F993e351a0eF74fb727Cfe1029884b",
+  "transactionHash": "0x87c8655bda65f86267080d3031edfbf9c5851bf04910aa7609f32937d30ff69a",
+  "deployer": "0x21e753651C9e3655e5dEeDdabbdD4a99629A2f6e",
+  "blockNumber": 10849363,
+  "compiler": {
+    "solc": "0.8.35",
+    "evmVersion": "paris",
+    "optimizer": true,
+    "optimizerRuns": 200
+  },
+  "source": {
+    "commit": "",
+    "verifiedUrl": ""
+  },
+  "deployedAt": "2026-05-14T05:25:00Z"
+}

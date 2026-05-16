@@ -29,7 +29,7 @@ Use this checklist before tagging a contract release or deploying a new
 
 ## Testnet Deployment
 
-- deploy to Sepolia first unless the use case specifically needs Hoodi
+- deploy to Sepolia first; use `deploy-testnet` for any additional EVM testnet
 - use a non-mainnet deployer key
 - verify source on the explorer
 - submit at least one EOA attestation

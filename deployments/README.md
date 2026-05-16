@@ -7,7 +7,6 @@ Recommended names:
 
 ```text
 sepolia.json
-hoodi.json
 mainnet.json
 ```
 
