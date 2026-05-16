@@ -68,7 +68,7 @@ struct DocBlock {
 Field meanings:
 
 - `docChainId`: profile identifier, conventionally the hash of a profile URI,
-  for example `keccak256("https://om.pub/rso/docchain/v1")`
+  for example `keccak256("https://om.pub/rso/doc-chain/v1")`
 - `docRef`: profile-defined unsigned 64-bit reference for grouping, browsing,
   and querying blocks within a `docChainId`
 - `parentHash`: previous `DocBlock` hash, or `bytes32(0)` for genesis
@@ -254,7 +254,7 @@ docChainId = keccak256(profileURI)
 where `profileURI` points to human-readable profile documentation, for example:
 
 ```text
-https://om.pub/rso/docchain/v1
+https://om.pub/rso/doc-chain/v1
 ```
 
 That URI can describe the doc canonicalization rules, `docRef` decoding,
@@ -282,8 +282,8 @@ For example, RSO can define:
 ```text
 contentHash = SHA-256(canonical catalog JSON)
 parentHash = prior RSO DocBlock blockHash
-docRef = UTC snapshot-boundary timestamp
-docChainId = keccak256("https://om.pub/rso/docchain/v1")
+docRef = UTC snapshot boundary encoded as YYYYMMDDHHMMSS
+docChainId = keccak256("https://om.pub/rso/doc-chain/v1")
 canonical branch = highest eligible card-specific TDH at attestation block time
 ```
 

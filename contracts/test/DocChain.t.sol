@@ -69,7 +69,7 @@ contract DocChainTest {
     uint256 private constant OTHER_PRIVATE_KEY = 0xB0B;
     uint256 private constant SECP256K1_HALF_ORDER =
         0x7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0;
-    bytes32 private constant DOC_CHAIN_ID = keccak256("https://om.pub/rso/docchain/v1");
+    bytes32 private constant DOC_CHAIN_ID = keccak256("https://om.pub/rso/doc-chain/v1");
     bytes32 private constant CONTENT_HASH = keccak256("canonical doc bytes");
     address private constant FIXTURE_VERIFYING_CONTRACT =
         0x000000000000000000000000000000000000D0c0;
@@ -77,8 +77,8 @@ contract DocChainTest {
     uint256 private constant FIXTURE_CHAIN_ID = 11_155_111;
     uint256 private constant FIXTURE_DEADLINE = 1_775_755_200;
     bytes32 private constant FIXTURE_DOC_CHAIN_ID =
-        0xc083016c1c5370c329ecfaf3806d21a371a97e1d6d3cf977535916d5384e103e;
-    uint64 private constant FIXTURE_DOC_REF = 202_605_060_000;
+        0x8621c2851714436d60da45cf0e11253114a4f2002f73ddc159b4dc88fea5611d;
+    uint64 private constant FIXTURE_DOC_REF = 20_260_506_000_000;
     bytes32 private constant FIXTURE_CONTENT_HASH =
         0xa8b7b5d544dfb935fe43e68e005f5ed61e5e31b69b5e88ce59e1e2d70ae50633;
     bytes32 private constant FIXTURE_DOC_BLOCK_TYPEHASH =
@@ -86,22 +86,22 @@ contract DocChainTest {
     bytes32 private constant FIXTURE_DOC_ATTESTATION_TYPEHASH =
         0x9c6b294d547b9e3462d84b736f8bd9d348daf7e68d85d506b624545d4987e5db;
     bytes32 private constant FIXTURE_DOC_BLOCK_HASH =
-        0x2de60e9c0d76f33ac0d134357c3a6dcd72f356eda91c328b529fb5d9e5a38305;
+        0x4be140a3a0f69195baf0a96bfd1df201163e286cf1faf504697500e9abbd6a3c;
     bytes32 private constant FIXTURE_URI_HASH =
         0xa2896eabd7f3b2830f5326ebd6c8b8942aeb432a05603978a1d01314849b1bb6;
     bytes32 private constant FIXTURE_ATTESTATION_HASH =
-        0x1ccdc608310432526732e9c6e77e9d228aaa4725125cbd33b677a0ecd57770f8;
+        0x5500cf6bdecf51985125e5016eb3f6e1b42049d022a14ae08a545aaec9c90d94;
     bytes32 private constant FIXTURE_ATTESTATION_KEY =
-        0x24d61703cdf0b5c0bf0bfb3c691f22a57bf2a227c484ddbd50402e4cd9248643;
+        0x1f1e876054c4daf674d5254f1b0683fdf245279f88293664aac70ccf4fa9c0b8;
     bytes32 private constant FIXTURE_DOMAIN_SEPARATOR =
         0xd39852038b61784cd59f43d990ddae31d807b9ec84a9003fc444c8136101288c;
     bytes32 private constant FIXTURE_ATTESTATION_DIGEST =
-        0xd32a0e66e3ab1d40c62b1d0f353dc3afd9538a732b83bcd98c350f4c52eba677;
+        0xc09d1f627ca2c6c8a36e735fa8f350249ddc64e8671ea1e472483825f7473276;
     bytes32 private constant FIXTURE_SIGNATURE_R =
-        0x20b91bbe414fe1b06e8839f47876d332067ce9b411f64b3257a0e203d4903d04;
+        0x7bcc2668c47888068e69db50df1220f5a1bc03e32031991d5dfe2c711f4f23fb;
     bytes32 private constant FIXTURE_SIGNATURE_S =
-        0x64e19d39e0e719bb0140965284b8077a2beb05cda7e02235df193c05d2fcc967;
-    uint8 private constant FIXTURE_SIGNATURE_V = 28;
+        0x7559f1ed904987850a661e99d2a714800666ba0bc6cfdd70475f549aea78f486;
+    uint8 private constant FIXTURE_SIGNATURE_V = 27;
 
     DocChain private chain;
     address private attester;
@@ -574,7 +574,7 @@ contract DocChainTest {
             attester: signer,
             docBlock: DocChain.DocBlock({
                 docChainId: DOC_CHAIN_ID,
-                docRef: 202605060000,
+                docRef: 20260506000000,
                 parentHash: bytes32(0),
                 contentHash: CONTENT_HASH
             }),
