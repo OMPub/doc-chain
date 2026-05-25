@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import random
+import re
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Iterator
@@ -16,6 +19,24 @@ class RpcError(RuntimeError):
     """Raised when an Ethereum JSON-RPC request fails."""
 
 
+class RateLimitError(RpcError):
+    """Raised after exhausting JSON-RPC rate-limit retries."""
+
+
+class BlockRangeLimitError(RpcError):
+    """Raised when a provider rejects an eth_getLogs block range."""
+
+    def __init__(self, message: str, max_block_range: int | None = None) -> None:
+        super().__init__(message)
+        self.max_block_range = max_block_range
+
+
+RPC_MAX_RETRIES = 6
+RPC_RETRY_BASE_DELAY_SECONDS = 0.75
+RPC_RETRY_MAX_DELAY_SECONDS = 30.0
+GET_LOGS_REQUEST_DELAY_SECONDS = 0.2
+
+
 class EthereumRpc:
     """Small JSON-RPC client for the methods needed by a log indexer."""
 
@@ -23,6 +44,7 @@ class EthereumRpc:
         self.rpc_url = rpc_url
         self.timeout = timeout
         self._next_id = 1
+        self._last_get_logs_at = 0.0
 
     def call(self, method: str, params: list[object]) -> object:
         payload = {
@@ -32,23 +54,54 @@ class EthereumRpc:
             "params": params,
         }
         self._next_id += 1
-        request = urllib.request.Request(
-            self.rpc_url,
-            data=json.dumps(payload, separators=(",", ":")).encode("utf-8"),
-            headers={"content-type": "application/json"},
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
-                body = json.loads(response.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")
-            raise RpcError(f"{method} request failed: HTTP {exc.code}: {detail}") from exc
-        except urllib.error.URLError as exc:
-            raise RpcError(f"{method} request failed: {exc}") from exc
-        if "error" in body:
-            raise RpcError(f"{method} returned error: {body['error']}")
-        return body["result"]
+        request_body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        for attempt in range(RPC_MAX_RETRIES + 1):
+            request = urllib.request.Request(
+                self.rpc_url,
+                data=request_body,
+                headers={"content-type": "application/json"},
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                    body = json.loads(response.read().decode("utf-8"))
+            except urllib.error.HTTPError as exc:
+                detail = exc.read().decode("utf-8", errors="replace")
+                if exc.code == 429:
+                    if attempt < RPC_MAX_RETRIES:
+                        _sleep_for_retry(attempt, _retry_after_seconds(exc))
+                        continue
+                    raise RateLimitError(
+                        f"{method} request failed after retries: HTTP {exc.code}: {detail}"
+                    ) from exc
+                block_limit = _block_range_limit_from_http_detail(method, detail)
+                if block_limit is not None:
+                    raise BlockRangeLimitError(
+                        f"{method} request failed: HTTP {exc.code}: {detail}",
+                        max_block_range=block_limit,
+                    ) from exc
+                raise RpcError(f"{method} request failed: HTTP {exc.code}: {detail}") from exc
+            except urllib.error.URLError as exc:
+                if attempt < RPC_MAX_RETRIES:
+                    _sleep_for_retry(attempt, None)
+                    continue
+                raise RpcError(f"{method} request failed after retries: {exc}") from exc
+            if "error" in body:
+                error = body["error"]
+                if _is_rate_limit_error(error):
+                    if attempt < RPC_MAX_RETRIES:
+                        _sleep_for_retry(attempt, None)
+                        continue
+                    raise RateLimitError(f"{method} returned rate-limit error after retries: {error}")
+                block_limit = _block_range_limit_from_error(method, error)
+                if block_limit is not None:
+                    raise BlockRangeLimitError(
+                        f"{method} returned block-range limit error: {error}",
+                        max_block_range=block_limit,
+                    )
+                raise RpcError(f"{method} returned error: {error}")
+            return body["result"]
+        raise RpcError(f"{method} request failed")
 
     def block_number(self) -> int:
         result = self.call("eth_blockNumber", [])
@@ -63,6 +116,7 @@ class EthereumRpc:
         to_block: int,
         topics: list[str | None],
     ) -> list[object]:
+        self._throttle_get_logs()
         result = self.call(
             "eth_getLogs",
             [
@@ -77,6 +131,13 @@ class EthereumRpc:
         if not isinstance(result, list):
             raise RpcError("eth_getLogs returned a non-list result")
         return result
+
+    def _throttle_get_logs(self) -> None:
+        now = time.monotonic()
+        elapsed = now - self._last_get_logs_at
+        if self._last_get_logs_at > 0 and elapsed < GET_LOGS_REQUEST_DELAY_SECONDS:
+            time.sleep(GET_LOGS_REQUEST_DELAY_SECONDS - elapsed)
+        self._last_get_logs_at = time.monotonic()
 
 
 def iter_doc_attested_chunks(
@@ -122,6 +183,14 @@ def _iter_doc_attested_range(
 ) -> Iterator[tuple[int, int, list[DocAttested]]]:
     try:
         logs = rpc.get_logs(address, from_block, to_block, topics)
+    except RateLimitError:
+        raise
+    except BlockRangeLimitError as exc:
+        if exc.max_block_range is None or from_block >= to_block:
+            raise
+        for start, end in block_ranges(from_block, to_block, exc.max_block_range):
+            yield from _iter_doc_attested_range(rpc, address, start, end, topics)
+        return
     except RpcError:
         if from_block >= to_block:
             raise
@@ -180,3 +249,81 @@ def _hex_body(value: str, field: str) -> str:
     except ValueError as exc:
         raise ValueError(f"{field} contains non-hex characters") from exc
     return body
+
+
+def _is_rate_limit_error(error: object) -> bool:
+    if isinstance(error, dict):
+        code = error.get("code")
+        message = str(error.get("message", ""))
+        return code == 429 or _mentions_rate_limit(message)
+    return _mentions_rate_limit(str(error))
+
+
+def _block_range_limit_from_http_detail(method: str, detail: str) -> int | None:
+    if method != "eth_getLogs":
+        return None
+    try:
+        raw = json.loads(detail)
+    except json.JSONDecodeError:
+        return _block_range_limit_from_message(detail)
+    if isinstance(raw, dict) and "error" in raw:
+        return _block_range_limit_from_error(method, raw["error"])
+    return _block_range_limit_from_message(detail)
+
+
+def _block_range_limit_from_error(method: str, error: object) -> int | None:
+    if method != "eth_getLogs":
+        return None
+    if isinstance(error, dict):
+        message = str(error.get("message", ""))
+    else:
+        message = str(error)
+    return _block_range_limit_from_message(message)
+
+
+def _block_range_limit_from_message(message: str) -> int | None:
+    normalized = message.lower()
+    if "block range" not in normalized:
+        return None
+    match = re.search(r"up to a? ([0-9][0-9_,]*) block range", normalized)
+    if match is None:
+        return None
+    limit = int(match.group(1).replace("_", "").replace(",", ""))
+    if limit < 1:
+        return None
+    return limit
+
+
+def _mentions_rate_limit(message: str) -> bool:
+    normalized = message.lower()
+    return (
+        "rate limit" in normalized
+        or "rate-limit" in normalized
+        or "too many requests" in normalized
+        or "compute units per second" in normalized
+        or "throughput" in normalized
+    )
+
+
+def _retry_after_seconds(exc: urllib.error.HTTPError) -> float | None:
+    value = exc.headers.get("Retry-After")
+    if value is None:
+        return None
+    try:
+        delay = float(value)
+    except ValueError:
+        return None
+    if delay < 0:
+        return None
+    return delay
+
+
+def _sleep_for_retry(attempt: int, retry_after: float | None) -> None:
+    if retry_after is not None:
+        time.sleep(min(retry_after, RPC_RETRY_MAX_DELAY_SECONDS))
+        return
+    cap = min(
+        RPC_RETRY_BASE_DELAY_SECONDS * (2**attempt),
+        RPC_RETRY_MAX_DELAY_SECONDS,
+    )
+    time.sleep(cap + random.uniform(0, cap / 4))

@@ -93,9 +93,15 @@ vendor/docchain/
   indexer.py
   logs.py
   model.py
+  store.py
 ```
 
 Profile-specific code lives in the consuming project.
+
+The reusable indexer layer includes provider backoff, provider block-range
+limit handling, checkpoint/resume, append-only event caches, and generic static
+index generation. Consuming projects should usually wrap that layer with only
+network/profile constants and project-specific presentation fields.
 
 ## Event Indexing
 

@@ -141,6 +141,11 @@ python3 scripts/index_events.py \
 Checkpoints record the contract address and topic filters. Reuse a checkpoint
 only with the same address, `docChainId`, attester, and `docRef` filter set.
 
+The indexer has built-in provider backoff. It retries HTTP/JSON-RPC 429
+responses with exponential backoff and jitter, pauses briefly between
+`eth_getLogs` requests, and only splits block ranges for non-rate-limit RPC
+errors such as provider range limits.
+
 Topic filters are available for `docChainId`, `attester`, and `docRef`:
 
 ```bash

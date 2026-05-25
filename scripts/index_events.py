@@ -8,13 +8,13 @@ import json
 import os
 import sys
 from dataclasses import asdict
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import TextIO
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "reference"))
 
 from docchain.indexer import EthereumRpc, RpcError, iter_doc_attested_chunks
+from docchain.store import ScanContext, checkpoint_from_block, write_checkpoint
 
 
 def main() -> int:
@@ -131,38 +131,7 @@ def _checkpoint_from_block(
 ) -> int | None:
     if not path:
         return None
-    checkpoint = Path(path)
-    if not checkpoint.exists():
-        return None
-    raw = json.loads(checkpoint.read_text(encoding="utf-8"))
-    if not isinstance(raw, dict):
-        raise ValueError("checkpoint must be a JSON object")
-    _validate_checkpoint(raw, config, args)
-    if "last_block" not in raw:
-        return None
-    return int(raw["last_block"]) + 1
-
-
-def _validate_checkpoint(
-    raw: dict[str, object],
-    config: dict[str, object],
-    args: argparse.Namespace,
-) -> None:
-    expected = {
-        "address": str(config["address"]).lower(),
-        "doc_chain_id": (args.doc_chain_id or "").lower(),
-        "attester": (args.attester or "").lower(),
-        "doc_ref": args.doc_ref,
-    }
-    actual = {
-        "address": str(raw.get("address", "")).lower(),
-        "doc_chain_id": str(raw.get("doc_chain_id", "")).lower(),
-        "attester": str(raw.get("attester", "")).lower(),
-        "doc_ref": raw.get("doc_ref"),
-    }
-    for field, expected_value in expected.items():
-        if actual[field] != expected_value:
-            raise ValueError(f"checkpoint {field} does not match current scan")
+    return checkpoint_from_block(path, _scan_context(str(config["address"]), args))
 
 
 def _to_block(value: str, rpc: EthereumRpc) -> int:
@@ -218,22 +187,16 @@ def _write_summary(
 
 
 def _write_checkpoint(path: str, address: str, args: argparse.Namespace, last_block: int) -> None:
-    checkpoint = {
-        "address": address,
-        "attester": args.attester or "",
-        "doc_chain_id": args.doc_chain_id or "",
-        "doc_ref": args.doc_ref,
-        "last_block": last_block,
-        "updated_at": datetime.now(timezone.utc)
-        .replace(microsecond=0)
-        .isoformat()
-        .replace("+00:00", "Z"),
-    }
-    checkpoint_path = Path(path)
-    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = checkpoint_path.with_name(checkpoint_path.name + ".tmp")
-    tmp_path.write_text(json.dumps(checkpoint, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    os.replace(tmp_path, checkpoint_path)
+    write_checkpoint(path, _scan_context(address, args), last_block)
+
+
+def _scan_context(address: str, args: argparse.Namespace) -> ScanContext:
+    return ScanContext(
+        address=address,
+        doc_chain_id=args.doc_chain_id or "",
+        attester=args.attester or "",
+        doc_ref=args.doc_ref,
+    )
 
 
 class _StdoutContext:

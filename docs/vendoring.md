@@ -13,6 +13,7 @@ vendor/docchain/
   indexer.py
   logs.py
   model.py
+  store.py
 
 indexer/
   project_index.py
@@ -22,8 +23,7 @@ indexer/
 The project indexer imports local vendored helpers and applies its own profile:
 
 ```python
-from vendor.docchain.logs import decode_doc_attested_log
-from vendor.docchain.model import normalize_doc_attested
+from vendor.docchain.store import build_docchain_index, update_event_cache
 from indexer.project_profile import score_branches
 ```
 

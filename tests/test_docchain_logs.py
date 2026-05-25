@@ -1,7 +1,11 @@
 import unittest
+from unittest.mock import patch
 
 from reference.docchain.abi import DOC_ATTESTED_EVENT_TOPIC0
 from reference.docchain.indexer import (
+    BlockRangeLimitError,
+    EthereumRpc,
+    RateLimitError,
     RpcError,
     block_ranges,
     doc_attested_topics,
@@ -144,6 +148,70 @@ class DocChainLogsTest(unittest.TestCase):
 
         self.assertEqual(chunks, [(100, 109, []), (110, 119, [])])
         self.assertEqual(rpc.calls, [(100, 119), (100, 109), (110, 119)])
+
+    def test_iter_doc_attested_chunks_does_not_split_rate_limits(self) -> None:
+        class RateLimitedRpc:
+            def __init__(self) -> None:
+                self.calls = []
+
+            def get_logs(self, address, from_block, to_block, topics):
+                self.calls.append((from_block, to_block))
+                raise RateLimitError("too many requests")
+
+        rpc = RateLimitedRpc()
+        with self.assertRaises(RateLimitError):
+            list(iter_doc_attested_chunks(rpc, "0x" + "aa" * 20, 100, 119))
+        self.assertEqual(rpc.calls, [(100, 119)])
+
+    def test_iter_doc_attested_chunks_honors_provider_block_range_limit(self) -> None:
+        class RangeLimitedRpc:
+            def __init__(self) -> None:
+                self.calls = []
+
+            def get_logs(self, address, from_block, to_block, topics):
+                self.calls.append((from_block, to_block))
+                if to_block - from_block + 1 > 10:
+                    raise BlockRangeLimitError("up to a 10 block range", max_block_range=10)
+                return []
+
+        rpc = RangeLimitedRpc()
+        chunks = list(iter_doc_attested_chunks(rpc, "0x" + "aa" * 20, 100, 119))
+
+        self.assertEqual(chunks, [(100, 109, []), (110, 119, [])])
+        self.assertEqual(rpc.calls, [(100, 119), (100, 109), (110, 119)])
+
+    def test_rpc_retries_json_rpc_rate_limit_errors(self) -> None:
+        class FakeResponse:
+            def __init__(self, payload: dict[str, object]) -> None:
+                self.payload = payload
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, traceback):
+                return None
+
+            def read(self) -> bytes:
+                import json
+
+                return json.dumps(self.payload).encode("utf-8")
+
+        calls = [
+            FakeResponse(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "error": {"code": 429, "message": "compute units per second"},
+                }
+            ),
+            FakeResponse({"jsonrpc": "2.0", "id": 1, "result": "0x7b"}),
+        ]
+
+        with patch("reference.docchain.indexer.time.sleep") as sleep:
+            with patch("reference.docchain.indexer.random.uniform", return_value=0):
+                with patch("reference.docchain.indexer.urllib.request.urlopen", side_effect=calls):
+                    self.assertEqual(EthereumRpc("https://example.invalid").block_number(), 123)
+        sleep.assert_called_once()
 
 
 if __name__ == "__main__":
