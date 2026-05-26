@@ -1,4 +1,7 @@
+import io
+import json
 import unittest
+import urllib.error
 from unittest.mock import patch
 
 from reference.docchain.abi import DOC_ATTESTED_EVENT_TOPIC0
@@ -24,6 +27,30 @@ CONTENT_HASH = "0x" + "66" * 32
 URI_HASH = "0x" + "77" * 32
 TX_HASH = "0x" + "88" * 32
 ETHEREUM_BLOCK_HASH = "0x" + "99" * 32
+
+
+class FakeResponse:
+    def __init__(self, payload: dict[str, object]) -> None:
+        self.payload = payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, traceback):
+        return None
+
+    def read(self) -> bytes:
+        return json.dumps(self.payload).encode("utf-8")
+
+
+def http_error(code: int, payload: dict[str, object], headers: dict[str, str] | None = None):
+    return urllib.error.HTTPError(
+        "https://example.invalid",
+        code,
+        "error",
+        headers or {},
+        io.BytesIO(json.dumps(payload).encode("utf-8")),
+    )
 
 
 def word(hex_body: str) -> str:
@@ -181,21 +208,6 @@ class DocChainLogsTest(unittest.TestCase):
         self.assertEqual(rpc.calls, [(100, 119), (100, 109), (110, 119)])
 
     def test_rpc_retries_json_rpc_rate_limit_errors(self) -> None:
-        class FakeResponse:
-            def __init__(self, payload: dict[str, object]) -> None:
-                self.payload = payload
-
-            def __enter__(self):
-                return self
-
-            def __exit__(self, exc_type, exc, traceback):
-                return None
-
-            def read(self) -> bytes:
-                import json
-
-                return json.dumps(self.payload).encode("utf-8")
-
         calls = [
             FakeResponse(
                 {
@@ -212,6 +224,79 @@ class DocChainLogsTest(unittest.TestCase):
                 with patch("reference.docchain.indexer.urllib.request.urlopen", side_effect=calls):
                     self.assertEqual(EthereumRpc("https://example.invalid").block_number(), 123)
         sleep.assert_called_once()
+
+    def test_rpc_retries_http_429_with_retry_after(self) -> None:
+        calls = [
+            http_error(
+                429,
+                {"jsonrpc": "2.0", "id": 1, "error": {"code": 429, "message": "limited"}},
+                headers={"Retry-After": "9"},
+            ),
+            FakeResponse({"jsonrpc": "2.0", "id": 1, "result": "0x7b"}),
+        ]
+
+        with patch("reference.docchain.indexer.time.sleep") as sleep:
+            with patch("reference.docchain.indexer.urllib.request.urlopen", side_effect=calls):
+                self.assertEqual(EthereumRpc("https://example.invalid").block_number(), 123)
+        sleep.assert_called_once_with(9.0)
+
+    def test_rpc_surfaces_provider_block_range_limit_from_json_rpc_error(self) -> None:
+        response = FakeResponse(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "error": {
+                    "code": -32600,
+                    "message": "Under the Free tier plan, you can make eth_getLogs "
+                    "requests with up to a 10 block range.",
+                },
+            }
+        )
+
+        with patch("reference.docchain.indexer.urllib.request.urlopen", return_value=response):
+            with self.assertRaises(BlockRangeLimitError) as raised:
+                EthereumRpc("https://example.invalid").get_logs(
+                    "0x" + "aa" * 20,
+                    100,
+                    119,
+                    doc_attested_topics(doc_chain_id=DOC_CHAIN_ID),
+                )
+        self.assertEqual(raised.exception.max_block_range, 10)
+
+    def test_rpc_surfaces_provider_block_range_limit_from_http_error(self) -> None:
+        error = http_error(
+            400,
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "error": {
+                    "code": -32600,
+                    "message": "eth_getLogs accepts up to a 1,000 block range",
+                },
+            },
+        )
+
+        with patch("reference.docchain.indexer.urllib.request.urlopen", side_effect=error):
+            with self.assertRaises(BlockRangeLimitError) as raised:
+                EthereumRpc("https://example.invalid").get_logs(
+                    "0x" + "aa" * 20,
+                    100,
+                    119,
+                    doc_attested_topics(doc_chain_id=DOC_CHAIN_ID),
+                )
+        self.assertEqual(raised.exception.max_block_range, 1000)
+
+    def test_get_logs_rejects_non_list_result(self) -> None:
+        response = FakeResponse({"jsonrpc": "2.0", "id": 1, "result": {"not": "logs"}})
+
+        with patch("reference.docchain.indexer.urllib.request.urlopen", return_value=response):
+            with self.assertRaisesRegex(RpcError, "non-list"):
+                EthereumRpc("https://example.invalid").get_logs(
+                    "0x" + "aa" * 20,
+                    100,
+                    101,
+                    doc_attested_topics(),
+                )
 
 
 if __name__ == "__main__":

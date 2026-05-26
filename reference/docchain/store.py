@@ -217,10 +217,16 @@ def load_event_cache(path: str | Path) -> list[DocAttested]:
         for line_number, line in enumerate(stream, start=1):
             if not line.strip():
                 continue
-            raw = json.loads(line)
+            try:
+                raw = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"cache line {line_number} is invalid JSON: {exc.msg}") from exc
             if not isinstance(raw, dict):
                 raise ValueError(f"cache line {line_number} must be a JSON object")
-            events.append(normalize_doc_attested(raw))
+            try:
+                events.append(normalize_doc_attested(raw))
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ValueError(f"cache line {line_number} is invalid: {exc}") from exc
     return dedupe_events(events)
 
 
