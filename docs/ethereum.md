@@ -232,6 +232,14 @@ Set an attester address in your shell or `.env`:
 DOCCHAIN_ATTESTER=0x...
 ```
 
+Optionally set an identity address the attester is speaking for. Omit this, or
+use `0x0000000000000000000000000000000000000000`, when no delegated identity is
+claimed:
+
+```bash
+DOCCHAIN_ON_BEHALF_OF=0x...
+```
+
 Prepare typed data:
 
 ```bash
@@ -245,7 +253,9 @@ make prepare-attestation PREPARE_ATTESTATION_ARGS="\
 
 This writes `build/attestations/attestation.prepared.json`.
 Pass `--attester 0x...` in `PREPARE_ATTESTATION_ARGS` if you do not set
-`DOCCHAIN_ATTESTER`.
+`DOCCHAIN_ATTESTER`. Pass `--on-behalf-of 0x...` or set
+`DOCCHAIN_ON_BEHALF_OF` if the signed attestation should point to a delegated
+identity.
 
 Sign it:
 

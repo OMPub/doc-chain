@@ -21,6 +21,7 @@ from reference.docchain.model import DocAttested
 
 DOC_CHAIN_ID = "0x" + "11" * 32
 ATTESTER = "0x" + "22" * 20
+ON_BEHALF_OF = "0x" + "29" * 20
 SUBMITTER = "0x" + "33" * 20
 PARENT_HASH = "0x" + "44" * 32
 DOC_BLOCK_HASH = "0x" + "55" * 32
@@ -39,12 +40,13 @@ def raw_log(doc_ref: int = 7) -> dict[str, object]:
     uri_hex = uri.encode("utf-8").hex()
     uri_padding = "0" * ((64 - len(uri_hex) % 64) % 64)
     data = (
-        word(SUBMITTER[2:])
+        word(ON_BEHALF_OF[2:])
+        + word(SUBMITTER[2:])
         + PARENT_HASH[2:]
         + DOC_BLOCK_HASH[2:]
         + CONTENT_HASH[2:]
         + URI_HASH[2:]
-        + word(hex(6 * 32)[2:])
+        + word(hex(7 * 32)[2:])
         + word(hex(len(uri.encode("utf-8")))[2:])
         + uri_hex
         + uri_padding
@@ -145,6 +147,7 @@ class DocChainStoreTest(unittest.TestCase):
                         "docChainId": DOC_CHAIN_ID,
                         "attester": ATTESTER,
                         "docRef": "7",
+                        "onBehalfOf": ON_BEHALF_OF,
                         "submitter": SUBMITTER,
                         "parentHash": PARENT_HASH,
                         "blockHash": DOC_BLOCK_HASH,
@@ -165,7 +168,36 @@ class DocChainStoreTest(unittest.TestCase):
 
             self.assertEqual(len(events), 1)
             self.assertEqual(events[0].block_hash, DOC_BLOCK_HASH)
+            self.assertEqual(events[0].on_behalf_of, ON_BEHALF_OF)
             self.assertEqual(events[0].ethereum_block_hash, ETHEREUM_BLOCK_HASH)
+
+    def test_event_cache_defaults_legacy_on_behalf_of_to_zero_address(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache = Path(tmpdir) / "events.jsonl"
+            cache.write_text(
+                json.dumps(
+                    {
+                        "docChainId": DOC_CHAIN_ID,
+                        "attester": ATTESTER,
+                        "docRef": "7",
+                        "submitter": SUBMITTER,
+                        "parentHash": PARENT_HASH,
+                        "blockHash": DOC_BLOCK_HASH,
+                        "contentHash": CONTENT_HASH,
+                        "uriHash": URI_HASH,
+                        "uri": "ar://example",
+                        "blockNumber": "123",
+                        "transactionHash": TX_HASH,
+                        "logIndex": "2",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            events = load_event_cache(cache)
+
+            self.assertEqual(events[0].on_behalf_of, "0x" + "00" * 20)
 
     def test_event_cache_rejects_non_object_lines_with_line_number(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -390,6 +422,7 @@ class DocChainStoreTest(unittest.TestCase):
         self.assertIn("7", index["docRefs"])
         self.assertEqual(index["docRefs"]["7"]["candidateCount"], 1)
         self.assertEqual(index["events"][0]["transactionHash"], TX_HASH)
+        self.assertEqual(index["events"][0]["onBehalfOf"], ON_BEHALF_OF)
 
     def test_build_docchain_index_sorts_by_doc_ref_and_dedupes(self) -> None:
         later_ref = make_event(
@@ -459,6 +492,7 @@ def make_event(
         doc_chain_id=DOC_CHAIN_ID,
         attester=ATTESTER,
         doc_ref=doc_ref,
+        on_behalf_of=ON_BEHALF_OF,
         submitter=SUBMITTER,
         parent_hash=PARENT_HASH,
         block_hash=block_hash,

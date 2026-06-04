@@ -89,7 +89,7 @@ def redact_secret_values(text: str) -> str:
 
 
 def _hex_body(value: str, field: str) -> str:
-    if not isinstance(value, str) or not value.startswith("0x"):
+    if not isinstance(value, str) or not value.lower().startswith("0x"):
         raise ValueError(f"{field} must be a 0x-prefixed hex string")
     body = value[2:].lower()
     try:

@@ -74,6 +74,7 @@ contract DocChainTest {
     address private constant FIXTURE_VERIFYING_CONTRACT =
         0x000000000000000000000000000000000000D0c0;
     address private constant FIXTURE_ATTESTER = 0xe05fcC23807536bEe418f142D19fa0d21BB0cfF7;
+    address private constant FIXTURE_ON_BEHALF_OF = 0x0000000000000000000000000000000000006529;
     uint256 private constant FIXTURE_CHAIN_ID = 11_155_111;
     uint256 private constant FIXTURE_DEADLINE = 1_775_755_200;
     bytes32 private constant FIXTURE_DOC_CHAIN_ID =
@@ -84,23 +85,23 @@ contract DocChainTest {
     bytes32 private constant FIXTURE_DOC_BLOCK_TYPEHASH =
         0xb84212102d711af6fc7ae9fa3e37753befb8b25762a552631b0e9ff9e8d07894;
     bytes32 private constant FIXTURE_DOC_ATTESTATION_TYPEHASH =
-        0x9c6b294d547b9e3462d84b736f8bd9d348daf7e68d85d506b624545d4987e5db;
+        0x3cc0802d08c3f09619971b7d94c27c3cf2bd6da0582b399b6ab9259e8c75de6d;
     bytes32 private constant FIXTURE_DOC_BLOCK_HASH =
         0x4be140a3a0f69195baf0a96bfd1df201163e286cf1faf504697500e9abbd6a3c;
     bytes32 private constant FIXTURE_URI_HASH =
         0xa2896eabd7f3b2830f5326ebd6c8b8942aeb432a05603978a1d01314849b1bb6;
     bytes32 private constant FIXTURE_ATTESTATION_HASH =
-        0x5500cf6bdecf51985125e5016eb3f6e1b42049d022a14ae08a545aaec9c90d94;
+        0xbed0ca9144965182ee3de2975fb0bdcd4ca14df1f8ef10f2521e5af86d38fecf;
     bytes32 private constant FIXTURE_ATTESTATION_KEY =
-        0x1f1e876054c4daf674d5254f1b0683fdf245279f88293664aac70ccf4fa9c0b8;
+        0x13ef27af2426c2dcf9407382a04bbfd9fabdbbd8ad406166410abf921377d3a5;
     bytes32 private constant FIXTURE_DOMAIN_SEPARATOR =
         0xd39852038b61784cd59f43d990ddae31d807b9ec84a9003fc444c8136101288c;
     bytes32 private constant FIXTURE_ATTESTATION_DIGEST =
-        0xc09d1f627ca2c6c8a36e735fa8f350249ddc64e8671ea1e472483825f7473276;
+        0x960cea4a8155a08f29795a6ad7ca5d81f7d793fcbfdc95db12a6d889645e5697;
     bytes32 private constant FIXTURE_SIGNATURE_R =
-        0x7bcc2668c47888068e69db50df1220f5a1bc03e32031991d5dfe2c711f4f23fb;
+        0x752b9c40dc0893ae03a0edd4cdf344d2a890df85703b36d23795bdcb1bead15d;
     bytes32 private constant FIXTURE_SIGNATURE_S =
-        0x7559f1ed904987850a661e99d2a714800666ba0bc6cfdd70475f549aea78f486;
+        0x6bda2861c1df7660116b80752be9117be5f30fc5a26585517fa608dde6218541;
     uint8 private constant FIXTURE_SIGNATURE_V = 27;
 
     DocChain private chain;
@@ -110,6 +111,7 @@ contract DocChainTest {
         bytes32 indexed docChainId,
         address indexed attester,
         uint64 indexed docRef,
+        address onBehalfOf,
         address submitter,
         bytes32 parentHash,
         bytes32 blockHash,
@@ -130,13 +132,16 @@ contract DocChainTest {
 
         bytes32 blockHash = chain.hashDocBlock(attestation.docBlock);
         bytes32 uriHash = keccak256(bytes(attestation.uri));
-        bytes32 key = chain.attestationKey(attestation.attester, attestation.docBlock, uriHash);
+        bytes32 key = chain.attestationKey(
+            attestation.attester, attestation.onBehalfOf, attestation.docBlock, uriHash
+        );
 
         vm.expectEmit(true, true, true, true, address(chain));
         emit DocAttested(
             attestation.docBlock.docChainId,
             attestation.attester,
             attestation.docBlock.docRef,
+            attestation.onBehalfOf,
             address(this),
             attestation.docBlock.parentHash,
             blockHash,
@@ -220,8 +225,70 @@ contract DocChainTest {
         assertNotEq(firstKey, secondKey);
     }
 
-    function testRelayerIsRecordedAsSubmitter() public {
-        address relayer = address(0xBEEF);
+    function testAllowsSameBlockWithDifferentOnBehalfOf() public {
+        DocChain.DocAttestation memory first = _attestationFor(attester, address(0x1234));
+        bytes memory firstSignature = _sign(ATTESTER_PRIVATE_KEY, first);
+        (,, bytes32 firstKey) = chain.attestDoc(first, firstSignature);
+
+        DocChain.DocAttestation memory second = _attestationFor(attester, address(0x5678));
+        bytes memory secondSignature = _sign(ATTESTER_PRIVATE_KEY, second);
+        (,, bytes32 secondKey) = chain.attestDoc(second, secondSignature);
+
+        assertTrue(chain.attested(firstKey));
+        assertTrue(chain.attested(secondKey));
+        assertNotEq(firstKey, secondKey);
+    }
+
+    function testAttestsOnBehalfOfAndEmitsData() public {
+        DocChain.DocAttestation memory attestation = _attestationFor(attester, address(0x6529));
+        bytes memory signature = _sign(ATTESTER_PRIVATE_KEY, attestation);
+        bytes32 blockHash = chain.hashDocBlock(attestation.docBlock);
+        bytes32 uriHash = keccak256(bytes(attestation.uri));
+
+        vm.expectEmit(true, true, true, true, address(chain));
+        emit DocAttested(
+            attestation.docBlock.docChainId,
+            attestation.attester,
+            attestation.docBlock.docRef,
+            attestation.onBehalfOf,
+            address(this),
+            attestation.docBlock.parentHash,
+            blockHash,
+            attestation.docBlock.contentHash,
+            uriHash,
+            attestation.uri
+        );
+
+        (,, bytes32 key) = chain.attestDoc(attestation, signature);
+
+        assertTrue(chain.attested(key));
+    }
+
+    function testOnBehalfOfIsSigned() public {
+        DocChain.DocAttestation memory attestation = _attestationFor(attester, address(0x1234));
+        bytes memory signature = _sign(ATTESTER_PRIVATE_KEY, attestation);
+        attestation.onBehalfOf = address(0x5678);
+
+        vm.expectRevert(abi.encodeWithSelector(DocChain.InvalidSignature.selector, attester));
+        chain.attestDoc(attestation, signature);
+    }
+
+    function testAttestationKeyIncludesOnBehalfOf() public view {
+        DocChain.DocAttestation memory attestation = _attestationFor(attester, address(0x1234));
+        bytes32 uriHash = keccak256(bytes(attestation.uri));
+
+        bytes32 firstKey = chain.attestationKey(
+            attestation.attester, attestation.onBehalfOf, attestation.docBlock, uriHash
+        );
+        bytes32 secondKey = chain.attestationKey(
+            attestation.attester, address(0x5678), attestation.docBlock, uriHash
+        );
+
+        assertNotEq(firstKey, secondKey);
+    }
+
+    function testCourierIsRecordedAsSubmitter() public {
+        address courier = address(0xBEEF);
         DocChain.DocAttestation memory attestation = _attestation(attester);
         bytes memory signature = _sign(ATTESTER_PRIVATE_KEY, attestation);
         bytes32 blockHash = chain.hashDocBlock(attestation.docBlock);
@@ -232,7 +299,8 @@ contract DocChainTest {
             attestation.docBlock.docChainId,
             attestation.attester,
             attestation.docBlock.docRef,
-            relayer,
+            attestation.onBehalfOf,
+            courier,
             attestation.docBlock.parentHash,
             blockHash,
             attestation.docBlock.contentHash,
@@ -240,7 +308,7 @@ contract DocChainTest {
             attestation.uri
         );
 
-        vm.prank(relayer);
+        vm.prank(courier);
         chain.attestDoc(attestation, signature);
     }
 
@@ -286,7 +354,9 @@ contract DocChainTest {
         chain.attestDoc(attestation, signature);
 
         bytes32 uriHash = keccak256(bytes(attestation.uri));
-        bytes32 key = chain.attestationKey(attestation.attester, attestation.docBlock, uriHash);
+        bytes32 key = chain.attestationKey(
+            attestation.attester, attestation.onBehalfOf, attestation.docBlock, uriHash
+        );
 
         vm.expectRevert(abi.encodeWithSelector(DocChain.DuplicateAttestation.selector, key));
         chain.attestDoc(attestation, signature);
@@ -417,6 +487,7 @@ contract DocChainTest {
         });
         DocChain.DocAttestation memory attestation = DocChain.DocAttestation({
             attester: FIXTURE_ATTESTER,
+            onBehalfOf: FIXTURE_ON_BEHALF_OF,
             docBlock: docBlock,
             uri: "ipfs://bafybeidocchainattestation",
             deadline: FIXTURE_DEADLINE
@@ -432,7 +503,9 @@ contract DocChainTest {
         assertEq(keccak256(bytes(attestation.uri)), FIXTURE_URI_HASH);
         assertEq(chain.hashAttestation(attestation), FIXTURE_ATTESTATION_HASH);
         assertEq(
-            chain.attestationKey(FIXTURE_ATTESTER, docBlock, FIXTURE_URI_HASH),
+            chain.attestationKey(
+                FIXTURE_ATTESTER, FIXTURE_ON_BEHALF_OF, docBlock, FIXTURE_URI_HASH
+            ),
             FIXTURE_ATTESTATION_KEY
         );
 
@@ -492,6 +565,7 @@ contract DocChainTest {
 
     function testFuzzHashAttestationMatchesTypedEncoding(
         address signer,
+        address onBehalfOf,
         bytes32 docChainId,
         uint64 docRef,
         bytes32 parentHash,
@@ -505,13 +579,18 @@ contract DocChainTest {
             docChainId: docChainId, docRef: docRef, parentHash: parentHash, contentHash: contentHash
         });
         DocChain.DocAttestation memory attestation = DocChain.DocAttestation({
-            attester: signer, docBlock: docBlock, uri: uri, deadline: deadline
+            attester: signer,
+            onBehalfOf: onBehalfOf,
+            docBlock: docBlock,
+            uri: uri,
+            deadline: deadline
         });
 
         bytes32 expected = keccak256(
             abi.encode(
                 chain.DOC_ATTESTATION_TYPEHASH(),
                 signer,
+                onBehalfOf,
                 chain.hashDocBlock(docBlock),
                 keccak256(bytes(uri)),
                 deadline
@@ -523,6 +602,7 @@ contract DocChainTest {
 
     function testFuzzAttestationKeyMatchesTypedEncoding(
         address signer,
+        address onBehalfOf,
         bytes32 docChainId,
         uint64 docRef,
         bytes32 parentHash,
@@ -533,13 +613,15 @@ contract DocChainTest {
             docChainId: docChainId, docRef: docRef, parentHash: parentHash, contentHash: contentHash
         });
 
-        bytes32 expected =
-            keccak256(abi.encode(signer, docChainId, docRef, parentHash, contentHash, uriHash));
+        bytes32 expected = keccak256(
+            abi.encode(signer, onBehalfOf, docChainId, docRef, parentHash, contentHash, uriHash)
+        );
 
-        assertEq(chain.attestationKey(signer, docBlock, uriHash), expected);
+        assertEq(chain.attestationKey(signer, onBehalfOf, docBlock, uriHash), expected);
     }
 
     function testFuzzAttestsEoa(
+        address onBehalfOf,
         bytes32 docChainId,
         uint64 docRef,
         bytes32 parentHash,
@@ -550,6 +632,7 @@ contract DocChainTest {
         vm.assume(uriBytes.length <= 512);
         DocChain.DocAttestation memory attestation = DocChain.DocAttestation({
             attester: attester,
+            onBehalfOf: onBehalfOf,
             docBlock: DocChain.DocBlock({
                 docChainId: docChainId,
                 docRef: docRef,
@@ -565,13 +648,25 @@ contract DocChainTest {
 
         assertEq(blockHash, chain.hashDocBlock(attestation.docBlock));
         assertEq(uriHash, keccak256(bytes(attestation.uri)));
-        assertEq(key, chain.attestationKey(attester, attestation.docBlock, uriHash));
+        assertEq(
+            key,
+            chain.attestationKey(attester, attestation.onBehalfOf, attestation.docBlock, uriHash)
+        );
         assertTrue(chain.attested(key));
     }
 
     function _attestation(address signer) private view returns (DocChain.DocAttestation memory) {
+        return _attestationFor(signer, address(0));
+    }
+
+    function _attestationFor(address signer, address onBehalfOf)
+        private
+        view
+        returns (DocChain.DocAttestation memory)
+    {
         return DocChain.DocAttestation({
             attester: signer,
+            onBehalfOf: onBehalfOf,
             docBlock: DocChain.DocBlock({
                 docChainId: DOC_CHAIN_ID,
                 docRef: 20260506000000,

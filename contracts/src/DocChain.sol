@@ -40,7 +40,7 @@ contract DocChain {
         "DocBlock(bytes32 docChainId,uint64 docRef,bytes32 parentHash,bytes32 contentHash)"
     );
     bytes32 public constant DOC_ATTESTATION_TYPEHASH = keccak256(
-        "DocAttestation(address attester,DocBlock docBlock,string uri,uint256 deadline)"
+        "DocAttestation(address attester,address onBehalfOf,DocBlock docBlock,string uri,uint256 deadline)"
         "DocBlock(bytes32 docChainId,uint64 docRef,bytes32 parentHash,bytes32 contentHash)"
     );
 
@@ -66,6 +66,7 @@ contract DocChain {
 
     struct DocAttestation {
         address attester;
+        address onBehalfOf;
         DocBlock docBlock;
         string uri;
         uint256 deadline;
@@ -75,6 +76,7 @@ contract DocChain {
         bytes32 indexed docChainId,
         address indexed attester,
         uint64 indexed docRef,
+        address onBehalfOf,
         address submitter,
         bytes32 parentHash,
         bytes32 blockHash,
@@ -130,6 +132,7 @@ contract DocChain {
         uriHash = keccak256(bytes(attestation.uri));
         key = _attestationKeyFields(
             attester,
+            attestation.onBehalfOf,
             attestation.docBlock.docChainId,
             attestation.docBlock.docRef,
             attestation.docBlock.parentHash,
@@ -141,8 +144,9 @@ contract DocChain {
             revert DuplicateAttestation(key);
         }
 
-        bytes32 structHash =
-            _hashAttestationFields(attester, blockHash, uriHash, attestation.deadline);
+        bytes32 structHash = _hashAttestationFields(
+            attester, attestation.onBehalfOf, blockHash, uriHash, attestation.deadline
+        );
         bytes32 digest = _toTypedDataHash(structHash);
         _requireValidSignature(attester, digest, signature);
 
@@ -160,6 +164,7 @@ contract DocChain {
             attestation.docBlock.docChainId,
             attestation.attester,
             attestation.docBlock.docRef,
+            attestation.onBehalfOf,
             msg.sender,
             attestation.docBlock.parentHash,
             blockHash,
@@ -190,6 +195,7 @@ contract DocChain {
     function hashAttestation(DocAttestation memory attestation) public pure returns (bytes32) {
         return _hashAttestationFields(
             attestation.attester,
+            attestation.onBehalfOf,
             hashDocBlock(attestation.docBlock),
             keccak256(bytes(attestation.uri)),
             attestation.deadline
@@ -202,13 +208,15 @@ contract DocChain {
     }
 
     /// @notice Duplicate-prevention key for a publication claim.
-    function attestationKey(address attester, DocBlock memory docBlock, bytes32 uriHash)
-        public
-        pure
-        returns (bytes32)
-    {
+    function attestationKey(
+        address attester,
+        address onBehalfOf,
+        DocBlock memory docBlock,
+        bytes32 uriHash
+    ) public pure returns (bytes32) {
         return _attestationKeyFields(
             attester,
+            onBehalfOf,
             docBlock.docChainId,
             docBlock.docRef,
             docBlock.parentHash,
@@ -219,6 +227,7 @@ contract DocChain {
 
     function _attestationKeyFields(
         address attester,
+        address onBehalfOf,
         bytes32 docChainId,
         uint64 docRef,
         bytes32 parentHash,
@@ -226,7 +235,9 @@ contract DocChain {
         bytes32 uriHash
     ) private pure returns (bytes32) {
         // Use abi.encode, not abi.encodePacked, to keep the key unambiguous across typed fields.
-        return keccak256(abi.encode(attester, docChainId, docRef, parentHash, contentHash, uriHash));
+        return keccak256(
+            abi.encode(attester, onBehalfOf, docChainId, docRef, parentHash, contentHash, uriHash)
+        );
     }
 
     function _buildDomainSeparator() private view returns (bytes32) {
@@ -254,12 +265,13 @@ contract DocChain {
 
     function _hashAttestationFields(
         address attester,
+        address onBehalfOf,
         bytes32 blockHash,
         bytes32 uriHash,
         uint256 deadline
     ) private pure returns (bytes32) {
         return keccak256(
-            abi.encode(DOC_ATTESTATION_TYPEHASH, attester, blockHash, uriHash, deadline)
+            abi.encode(DOC_ATTESTATION_TYPEHASH, attester, onBehalfOf, blockHash, uriHash, deadline)
         );
     }
 

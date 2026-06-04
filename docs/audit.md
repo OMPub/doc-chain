@@ -18,7 +18,7 @@ Not in scope:
 - profile-specific doc validation
 - canonical branch selection
 - URI reachability or content fetching
-- relayer sponsorship rules
+- sweeper or courier sponsorship rules
 - third-party wallet implementation correctness
 
 ## Summary
@@ -50,8 +50,8 @@ Signature verification:
 
 State and duplicate handling:
 
-- Duplicate key is `keccak256(abi.encode(attester, docChainId, docRef,
-  parentHash, contentHash, uriHash))`.
+- Duplicate key is `keccak256(abi.encode(attester, onBehalfOf, docChainId,
+  docRef, parentHash, contentHash, uriHash))`.
 - State is changed only after all validation succeeds.
 - The only external call is a `staticcall` to EIP-1271 before state mutation.
 
@@ -59,8 +59,8 @@ Bounds and event completeness:
 
 - `bytes(uri).length` must be at most 8192.
 - `uriHash` is computed by the contract from the submitted URI.
-- Event includes submitter, parent hash, block hash, content hash, URI hash, and
-  URI.
+- Event includes delegated identity metadata, submitter, parent hash, block
+  hash, content hash, URI hash, and URI.
 
 ## Informational Notes
 
@@ -68,9 +68,9 @@ URI normalization is intentionally out of scope. Different URI strings that
 resolve to the same bytes are distinct publication claims because the duplicate
 key uses `uriHash`.
 
-The same attester may attest the same doc block with different URIs. This
-matches the protocol requirement for IPFS, Arweave, HTTPS, and hash-only
-publication variants.
+The same attester may attest the same doc block with different URIs or
+different `onBehalfOf` identities. This matches the protocol requirement for
+IPFS, Arweave, HTTPS, delegated identity, and hash-only publication variants.
 
 EIP-1271 validation is checked at submission time. A contract wallet changing
 its signing policy later does not invalidate historical events.

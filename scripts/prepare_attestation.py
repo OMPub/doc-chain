@@ -21,6 +21,8 @@ from _docchain_script import (
     write_json,
 )
 
+ZERO_ADDRESS = "0x" + "00" * 20
+
 
 def main() -> int:
     try:
@@ -44,6 +46,11 @@ def _parse_args() -> argparse.Namespace:
         "--attester",
         default=os.environ.get("DOCCHAIN_ATTESTER") or os.environ.get("ATTESTER_ADDRESS"),
         help="Address that will sign the attestation.",
+    )
+    parser.add_argument(
+        "--on-behalf-of",
+        default=os.environ.get("DOCCHAIN_ON_BEHALF_OF") or ZERO_ADDRESS,
+        help="Optional identity address this attestation is made on behalf of.",
     )
     parser.add_argument("--doc-chain-id", required=True, help="Profile docChainId bytes32.")
     parser.add_argument("--doc-ref", required=True, type=int, help="Profile-defined uint64 docRef.")
@@ -79,6 +86,7 @@ def prepare_attestation(args: argparse.Namespace) -> dict[str, object]:
 
     attestation = {
         "attester": normalize_address(args.attester),
+        "onBehalfOf": normalize_address(args.on_behalf_of),
         "docBlock": {
             "docChainId": normalize_bytes32(args.doc_chain_id),
             "docRef": uint64(args.doc_ref, "docRef"),
@@ -130,6 +138,7 @@ def typed_data_for_attestation(
             ],
             "DocAttestation": [
                 {"name": "attester", "type": "address"},
+                {"name": "onBehalfOf", "type": "address"},
                 {"name": "docBlock", "type": "DocBlock"},
                 {"name": "uri", "type": "string"},
                 {"name": "deadline", "type": "uint256"},

@@ -50,6 +50,6 @@ Use this checklist before tagging a contract release or deploying a new
 
 - monitor explorer verification status
 - monitor first production attestations
-- publish any profile-specific relayer rules separately from contract docs
+- publish any profile-specific sweeper/courier rules separately from contract docs
 - create a new `docChainId` profile if validation rules changed
   incompatibly

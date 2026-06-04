@@ -325,6 +325,7 @@ def event_index_record(event: DocAttested) -> dict[str, object]:
         "docChainId": event.doc_chain_id,
         "docRef": event.doc_ref,
         "attester": event.attester,
+        "onBehalfOf": event.on_behalf_of,
         "submitter": event.submitter,
         "parentHash": event.parent_hash,
         "blockHash": event.block_hash,

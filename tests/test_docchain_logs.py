@@ -4,7 +4,7 @@ import unittest
 import urllib.error
 from unittest.mock import patch
 
-from reference.docchain.abi import DOC_ATTESTED_EVENT_TOPIC0
+from reference.docchain.abi import DOC_ATTESTED_EVENT_TOPIC0, DOC_ATTESTED_EVENT_LEGACY_TOPIC0
 from reference.docchain.indexer import (
     BlockRangeLimitError,
     EthereumRpc,
@@ -20,6 +20,7 @@ from reference.docchain.model import normalize_doc_attested
 
 DOC_CHAIN_ID = "0x" + "11" * 32
 ATTESTER = "0x" + "22" * 20
+ON_BEHALF_OF = "0x" + "29" * 20
 SUBMITTER = "0x" + "33" * 20
 PARENT_HASH = "0x" + "44" * 32
 DOC_BLOCK_HASH = "0x" + "55" * 32
@@ -61,12 +62,13 @@ def raw_log(uri: str = "ar://example") -> dict[str, object]:
     uri_hex = uri.encode("utf-8").hex()
     uri_padding = "0" * ((64 - len(uri_hex) % 64) % 64)
     data = (
-        word(SUBMITTER[2:])
+        word(ON_BEHALF_OF[2:])
+        + word(SUBMITTER[2:])
         + PARENT_HASH[2:]
         + DOC_BLOCK_HASH[2:]
         + CONTENT_HASH[2:]
         + URI_HASH[2:]
-        + word(hex(6 * 32)[2:])
+        + word(hex(7 * 32)[2:])
         + word(hex(len(uri.encode("utf-8")))[2:])
         + uri_hex
         + uri_padding
@@ -87,6 +89,32 @@ def raw_log(uri: str = "ar://example") -> dict[str, object]:
     }
 
 
+def legacy_raw_log(uri: str = "ar://example") -> dict[str, object]:
+    uri_hex = uri.encode("utf-8").hex()
+    uri_padding = "0" * ((64 - len(uri_hex) % 64) % 64)
+    data = (
+        word(SUBMITTER[2:])
+        + PARENT_HASH[2:]
+        + DOC_BLOCK_HASH[2:]
+        + CONTENT_HASH[2:]
+        + URI_HASH[2:]
+        + word(hex(6 * 32)[2:])
+        + word(hex(len(uri.encode("utf-8")))[2:])
+        + uri_hex
+        + uri_padding
+    )
+    return {
+        **raw_log(uri),
+        "data": "0x" + data,
+        "topics": [
+            DOC_ATTESTED_EVENT_LEGACY_TOPIC0,
+            DOC_CHAIN_ID,
+            "0x" + word(ATTESTER[2:]),
+            "0x" + word("7"),
+        ],
+    }
+
+
 class DocChainLogsTest(unittest.TestCase):
     def test_decode_doc_attested_log(self) -> None:
         event = decode_doc_attested_log(raw_log())
@@ -94,6 +122,7 @@ class DocChainLogsTest(unittest.TestCase):
         self.assertEqual(event.doc_chain_id, DOC_CHAIN_ID)
         self.assertEqual(event.attester, ATTESTER)
         self.assertEqual(event.doc_ref, 7)
+        self.assertEqual(event.on_behalf_of, ON_BEHALF_OF)
         self.assertEqual(event.submitter, SUBMITTER)
         self.assertEqual(event.parent_hash, PARENT_HASH)
         self.assertEqual(event.block_hash, DOC_BLOCK_HASH)
@@ -108,7 +137,36 @@ class DocChainLogsTest(unittest.TestCase):
     def test_decode_empty_uri(self) -> None:
         self.assertEqual(decode_doc_attested_log(raw_log("")).uri, "")
 
+    def test_decode_legacy_doc_attested_log_defaults_on_behalf_of(self) -> None:
+        event = decode_doc_attested_log(legacy_raw_log())
+
+        self.assertEqual(event.on_behalf_of, "0x" + "00" * 20)
+        self.assertEqual(event.submitter, SUBMITTER)
+        self.assertEqual(event.uri, "ar://example")
+
     def test_normalize_decoded_mapping_keeps_existing_shape(self) -> None:
+        event = normalize_doc_attested(
+            {
+                "docChainId": DOC_CHAIN_ID,
+                "attester": ATTESTER,
+                "docRef": "7",
+                "onBehalfOf": ON_BEHALF_OF,
+                "submitter": SUBMITTER,
+                "parentHash": PARENT_HASH,
+                "blockHash": DOC_BLOCK_HASH,
+                "contentHash": CONTENT_HASH,
+                "uriHash": URI_HASH,
+                "uri": "ar://example",
+                "blockNumber": "123",
+                "transactionHash": TX_HASH,
+                "logIndex": "2",
+            }
+        )
+        self.assertEqual(event.block_hash, DOC_BLOCK_HASH)
+        self.assertEqual(event.on_behalf_of, ON_BEHALF_OF)
+        self.assertEqual(event.ethereum_block_hash, "")
+
+    def test_normalize_legacy_mapping_defaults_on_behalf_of_to_zero_address(self) -> None:
         event = normalize_doc_attested(
             {
                 "docChainId": DOC_CHAIN_ID,
@@ -125,14 +183,13 @@ class DocChainLogsTest(unittest.TestCase):
                 "logIndex": "2",
             }
         )
-        self.assertEqual(event.block_hash, DOC_BLOCK_HASH)
-        self.assertEqual(event.ethereum_block_hash, "")
+        self.assertEqual(event.on_behalf_of, "0x" + "00" * 20)
 
     def test_topic_filters(self) -> None:
         self.assertEqual(
             doc_attested_topics(doc_chain_id=DOC_CHAIN_ID, attester=ATTESTER, doc_ref=7),
             [
-                DOC_ATTESTED_EVENT_TOPIC0,
+                [DOC_ATTESTED_EVENT_TOPIC0, DOC_ATTESTED_EVENT_LEGACY_TOPIC0],
                 DOC_CHAIN_ID,
                 "0x" + word(ATTESTER[2:]),
                 "0x" + word("7"),

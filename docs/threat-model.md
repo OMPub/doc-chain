@@ -26,7 +26,7 @@ Attester:
 Submitter:
 
 - pays gas to submit a signed attestation
-- may be the attester, a relayer, an automation, or any other courier
+- may be the attester, a sweeper, an automation, or any other courier
 
 Indexer:
 
@@ -49,6 +49,12 @@ Wrong signer attribution:
 - mitigated by making `attester` part of the signed payload and verifying
   against that address
 
+Wrong delegated identity attribution:
+
+- mitigated at the raw log layer by making `onBehalfOf` part of the signed
+  payload and emitted event. The contract does not validate delegation; profiles
+  must verify whether the attester was authorized to speak for that identity.
+
 Contract-wallet signature mismatch:
 
 - mitigated by using EIP-1271 `isValidSignature(bytes32,bytes)` for attesters
@@ -60,8 +66,8 @@ Signature malleability:
 
 Duplicate publication spam by identical claim:
 
-- mitigated by storing `keccak256(abi.encode(attester, docChainId, docRef,
-  parentHash, contentHash, uriHash))`
+- mitigated by storing `keccak256(abi.encode(attester, onBehalfOf, docChainId,
+  docRef, parentHash, contentHash, uriHash))`
 
 Unbounded URI payloads:
 

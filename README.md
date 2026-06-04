@@ -68,6 +68,7 @@ struct DocBlock {
 
 struct DocAttestation {
     address attester;
+    address onBehalfOf;
     DocBlock docBlock;
     string uri;
     uint256 deadline;
@@ -79,6 +80,13 @@ For each attestation, the contract emits the `hashStruct(DocBlock)` value as
 historical block changes every descendant block hash. `docRef` is the
 profile-defined reference used for grouping, browsing, and querying blocks;
 `blockHash` is identity and `parentHash` is ancestry.
+
+`onBehalfOf` is optional signed metadata for profiles that support delegated
+identity. Use `address(0)` when the attestation is only from the signing key.
+
+`uri` is optional signed metadata for profile-defined location claims. It can be
+empty, a direct fetch URI, or a profile-defined `data:` URI containing bounded
+locator metadata. The contract stores and emits it but does not interpret it.
 
 ## Reuse Model
 
@@ -102,6 +110,10 @@ The reusable indexer layer includes provider backoff, provider block-range
 limit handling, checkpoint/resume, append-only event caches, and generic static
 index generation. Consuming projects should usually wrap that layer with only
 network/profile constants and project-specific presentation fields.
+
+The decoder accepts the current `DocAttested` event shape and the original
+event shape without `onBehalfOf`; legacy events are normalized with
+`onBehalfOf` set to `address(0)`.
 
 ## Event Indexing
 

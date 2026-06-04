@@ -98,6 +98,12 @@
             {
                 "indexed": false,
                 "internalType": "address",
+                "name": "onBehalfOf",
+                "type": "address"
+            },
+            {
+                "indexed": false,
+                "internalType": "address",
                 "name": "submitter",
                 "type": "address"
             },
@@ -236,6 +242,11 @@
                         "type": "address"
                     },
                     {
+                        "internalType": "address",
+                        "name": "onBehalfOf",
+                        "type": "address"
+                    },
+                    {
                         "components": [
                             {
                                 "internalType": "bytes32",
@@ -314,6 +325,11 @@
                         "type": "address"
                     },
                     {
+                        "internalType": "address",
+                        "name": "onBehalfOf",
+                        "type": "address"
+                    },
+                    {
                         "components": [
                             {
                                 "internalType": "bytes32",
@@ -372,6 +388,11 @@
             {
                 "internalType": "address",
                 "name": "attester",
+                "type": "address"
+            },
+            {
+                "internalType": "address",
+                "name": "onBehalfOf",
                 "type": "address"
             },
             {
@@ -444,6 +465,11 @@
                     {
                         "internalType": "address",
                         "name": "attester",
+                        "type": "address"
+                    },
+                    {
+                        "internalType": "address",
+                        "name": "onBehalfOf",
                         "type": "address"
                     },
                     {

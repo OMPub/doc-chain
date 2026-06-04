@@ -25,9 +25,9 @@ It does not:
 - fetch from storage networks
 - define a universal reputation or voting system
 - know about any specific NFT collection or community metric
-- sponsor gas or define relayer eligibility
+- sponsor gas or define courier/sweeper eligibility
 
-The contract is intentionally just the raw witness log. Clients, relayers,
+The contract is intentionally just the raw witness log. Clients, sweepers,
 indexers, viewers, and operator tooling apply profile rules for the attested
 `docChainId`.
 
@@ -95,6 +95,7 @@ indexers can decode `docRef` into richer labels such as dates, names, or paths.
 ```solidity
 struct DocAttestation {
     address attester;
+    address onBehalfOf;
     DocBlock docBlock;
     string uri;
     uint256 deadline;
@@ -104,9 +105,18 @@ struct DocAttestation {
 `attester` is the wallet making the claim. It is part of the signed payload so
 EOAs and EIP-1271 contract wallets can both be supported.
 
+`onBehalfOf` is an optional identity address the attester is claiming to
+represent. Use `address(0)` when the attestation is only for the signing key
+itself. The contract signs, emits, and deduplicates this field, but it does not
+decide whether the delegation is valid. Profiles and viewers must validate
+`onBehalfOf` against their own identity or delegation rules.
+
 `uri` is optional. Empty URI attestations are hash-only chain attestations. A
-non-empty URI additionally claims that the location resolves to bytes matching
-the profile rules for `contentHash`.
+non-empty URI additionally makes a profile-defined location claim. It may be a
+direct fetch URI or a self-contained `data:` URI that encodes profile-specific
+locator metadata, such as multiple mirrors or an artifact fingerprint. The
+contract does not interpret that payload; profile-aware clients decide whether
+the URI resolves to bytes matching the profile rules for `contentHash`.
 
 `uriHash` is deliberately not part of the signed struct. The contract computes
 `keccak256(bytes(uri))` after enforcing the URI size cap, uses that computed
@@ -115,12 +125,12 @@ value for duplicate prevention, and emits it in `DocAttested`.
 The contract must reject any attestation where `bytes(uri).length > 8192`.
 That 8 KiB cap keeps event payloads and downstream indexes bounded while still
 leaving room for long signed URLs, parameterized rendering URLs, and
-self-contained URI schemes. Profiles and relayers may enforce lower caps for
+self-contained URI schemes. Profiles and sweepers may enforce lower caps for
 sponsored submissions or profile-specific URI types.
 
 ## Signature Verification
 
-Anyone can submit a signed attestation onchain: the signer, a relayer, a
+Anyone can submit a signed attestation onchain: the signer, a sweeper, a
 GitHub Action, another operator, or a future archival service. The contract
 verifies that the signature is valid for the named `attester` and records that
 address as the attester. `msg.sender` is only the gas payer/courier.
@@ -145,7 +155,7 @@ revert if block.timestamp > deadline
 
 Relayers should apply the same check before paying gas, and should reject
 signatures that are too close to expiry to survive normal transaction inclusion.
-Applications should set deadlines long enough to survive a normal relayer queue
+Applications should set deadlines long enough to survive a normal sweeper queue
 and short enough that a stale or compromised signature is not reusable days
 later.
 
@@ -154,7 +164,7 @@ later.
 Contract-level uniqueness:
 
 ```text
-attested[attester][docChainId][docRef][parentHash][contentHash][uriHash] = true
+attested[attester][onBehalfOf][docChainId][docRef][parentHash][contentHash][uriHash] = true
 ```
 
 Implementation can store a packed key:
@@ -163,6 +173,7 @@ Implementation can store a packed key:
 bytes32 key = keccak256(
     abi.encode(
         attester,
+        onBehalfOf,
         docBlock.docChainId,
         docBlock.docRef,
         docBlock.parentHash,
@@ -176,6 +187,9 @@ This lets a signer attest distinct publications for the same doc block,
 such as Arweave and IPFS copies, while blocking repeated attestations to the
 same publication claim.
 
+Including `onBehalfOf` also lets one witness key publish separate claims for
+different delegated identities without making those claims indistinguishable.
+
 ## Event
 
 The contract must emit an append-only event for every successful attestation:
@@ -185,6 +199,7 @@ event DocAttested(
     bytes32 indexed docChainId,
     address indexed attester,
     uint64 indexed docRef,
+    address onBehalfOf,
     address submitter,
     bytes32 parentHash,
     bytes32 blockHash,
@@ -197,6 +212,9 @@ event DocAttested(
 `submitter` is `msg.sender`: the gas payer/courier. It is not part of
 attestation validity.
 
+`onBehalfOf` is the identity address from the signed attestation. `address(0)`
+means no delegated identity is claimed.
+
 The event must be sufficient for indexers and viewers to reconstruct witness
 history without heavy contract read APIs. From events alone, an indexer can
 reconstruct:
@@ -204,6 +222,7 @@ reconstruct:
 - every doc chain that has attestations
 - every doc reference that has attestations
 - every attester for each doc reference
+- any delegated identity each attestation claims
 - who paid gas for each submission
 - every candidate `blockHash` for a doc reference
 - the `parentHash` each candidate claims to extend
@@ -222,6 +241,7 @@ docChainId
       parentHash
       contentHash
       attestors[]
+      onBehalfOf[]
       submitters[]
       locations[uriHash]
         uri
@@ -243,7 +263,7 @@ Each `docChainId` defines a profile outside the contract:
 - URI validation
 - eligible attesters
 - branch scoring and canonicality
-- relayer sponsorship policy, if any
+- sweeper sponsorship policy, if any
 
 The recommended convention is:
 
@@ -261,13 +281,13 @@ That URI can describe the doc canonicalization rules, `docRef` decoding,
 URI interpretation, eligible attesters, and branch scoring for the profile.
 `bytes32` is sufficient because `keccak256` produces a 32-byte identifier. The
 profile URI is not recoverable from `docChainId`; projects must distribute the
-URI through docs, indexer config, relayer config, viewer config, or other
+URI through docs, indexer config, sweeper config, viewer config, or other
 offchain profile metadata.
 
 This is a convention, not a contract restriction. The contract accepts any
 `bytes32` `docChainId`. First use does not create ownership, reserve a name, or
 make a profile canonical. A `docChainId` becomes meaningful only when clients,
-relayers, indexers, viewers, and communities choose to resolve it as a
+sweepers, indexers, viewers, and communities choose to resolve it as a
 particular profile.
 
 This means squatting and pollution are possible at the raw event-log level:
@@ -293,7 +313,7 @@ votes, or no winner at all.
 ## Direct Submission And Relayers
 
 The contract is neutral. A direct submission and a relayed submission are both
-signed claims until a viewer, indexer, relayer, or operator validates them
+signed claims until a viewer, indexer, sweeper, or operator validates them
 against the relevant `docChainId` profile. A direct submission can put any
 profile-shaped claim onchain if the signature is valid and the duplicate key
 is unused.
@@ -301,4 +321,4 @@ is unused.
 Relayers can add project-specific preflight checks before paying gas, such as
 artifact fetching, URI allowlists, sponsorship quotas, reputation thresholds, or
 branch-policy validation. Those checks do not change contract validity; they
-only decide whether that relayer is willing to spend gas.
+only decide whether that sweeper is willing to spend gas.

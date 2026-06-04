@@ -13,8 +13,10 @@ attestDoc(
 )
 ```
 
-`attestation.attester` is the signer. `msg.sender` is only the submitter/gas
-payer and can be the attester, a relayer, a GitHub Action, or another courier.
+`attestation.attester` is the signer. `attestation.onBehalfOf` is optional
+signed identity metadata, with `address(0)` meaning no delegated identity is
+claimed. `msg.sender` is only the submitter/gas payer and can be the attester,
+a sweeper, a GitHub Action, or another courier.
 
 The implementation must:
 
@@ -24,7 +26,7 @@ The implementation must:
 - reject URIs longer than 8192 bytes
 - compute `blockHash = hashStruct(attestation.docBlock)`
 - compute `uriHash = keccak256(bytes(attestation.uri))`
-- reject duplicate `(attester, docChainId, docRef, parentHash,
+- reject duplicate `(attester, onBehalfOf, docChainId, docRef, parentHash,
   contentHash, uriHash)` claims
 - emit `DocAttested`
 
@@ -63,6 +65,7 @@ event DocAttested(
     bytes32 indexed docChainId,
     address indexed attester,
     uint64 indexed docRef,
+    address onBehalfOf,
     address submitter,
     bytes32 parentHash,
     bytes32 blockHash,

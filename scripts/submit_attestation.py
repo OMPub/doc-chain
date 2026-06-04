@@ -20,7 +20,7 @@ from _docchain_script import (
 )
 
 
-ATTEST_DOC_SELECTOR = "827b0644"
+ATTEST_DOC_SELECTOR = "d2b85e96"
 
 
 def main() -> int:
@@ -141,9 +141,10 @@ def attest_doc_calldata(attestation: object, signature: str) -> str:
 
 def _encode_attestation(attestation: dict[str, object], doc_block: dict[str, object]) -> str:
     uri = str(attestation.get("uri", "")).encode("utf-8")
-    uri_offset = 7 * 32
+    uri_offset = 8 * 32
     return (
         _word_address(str(attestation["attester"]))
+        + _word_address(str(attestation.get("onBehalfOf", "0x" + "00" * 20)))
         + _word_bytes32(str(doc_block["docChainId"]))
         + _word_uint(uint64(int(doc_block["docRef"]), "docRef"))
         + _word_bytes32(str(doc_block["parentHash"]))
