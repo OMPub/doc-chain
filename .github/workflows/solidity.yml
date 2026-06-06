@@ -47,6 +47,14 @@ jobs:
         with:
           persist-credentials: false
 
+      # crytic-compile auto-detects the root foundry.toml and shells out to
+      # `forge config`, which is not installed in the slither-action container,
+      # crashing before analysis even with --compile-force-framework solc. Hide
+      # it so Slither compiles DocChain.sol directly with solc (the contract has
+      # no imports). The Foundry job uses its own checkout and is unaffected.
+      - name: Hide Foundry config so Slither uses solc
+        run: mv foundry.toml foundry.toml.disabled
+
       - name: Run Slither
         uses: crytic/slither-action@v0.4.2
         with:
