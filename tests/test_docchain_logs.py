@@ -33,6 +33,7 @@ ETHEREUM_BLOCK_HASH = "0x" + "99" * 32
 class FakeResponse:
     def __init__(self, payload: dict[str, object]) -> None:
         self.payload = payload
+        self._buffer: bytes | None = None
 
     def __enter__(self):
         return self
@@ -40,8 +41,15 @@ class FakeResponse:
     def __exit__(self, exc_type, exc, traceback):
         return None
 
-    def read(self) -> bytes:
-        return json.dumps(self.payload).encode("utf-8")
+    def read(self, amt: int | None = None) -> bytes:
+        if self._buffer is None:
+            self._buffer = json.dumps(self.payload).encode("utf-8")
+        if amt is None:
+            chunk, self._buffer = self._buffer, b""
+            return chunk
+        chunk = self._buffer[:amt]
+        self._buffer = self._buffer[amt:]
+        return chunk
 
 
 def http_error(code: int, payload: dict[str, object], headers: dict[str, str] | None = None):
