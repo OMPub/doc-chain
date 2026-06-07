@@ -43,6 +43,9 @@ Ethereum build, test, deployment, and audit notes live in
 [docs/threat-model.md](docs/threat-model.md), and
 [docs/release-checklist.md](docs/release-checklist.md).
 
+Security feedback is welcome. See [SECURITY.md](SECURITY.md) for responsible
+disclosure guidance. This is not currently a formal bug bounty.
+
 ## Repository Layout
 
 ```text
