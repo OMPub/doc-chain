@@ -10,6 +10,12 @@ sepolia.json
 mainnet.json
 ```
 
+`<network>.json` always records the current deployment. When a network gets a
+new deployment, freeze the old record as `<network>-v<contractVersion>.json`
+(for example `sepolia-v1.json`) and point the new record's `supersedes` field
+at it. Superseded contracts stay live on chain and their records stay here;
+the registry only changes which deployment is current.
+
 Each file should use this shape:
 
 ```json
