@@ -655,6 +655,332 @@ contract DocChainTest {
         assertTrue(chain.attested(key));
     }
 
+    function testBatchAttestsChainedDays() public {
+        uint256 dayCount = 5;
+        (DocChain.DocAttestation[] memory attestations, bytes[] memory signatures) =
+            _chainedBatch(ATTESTER_PRIVATE_KEY, 20260420000000, dayCount);
+
+        (uint256 storedCount, uint256 skippedCount) = chain.attestBatch(attestations, signatures);
+
+        assertEq(storedCount, dayCount);
+        assertEq(skippedCount, 0);
+        for (uint256 i = 0; i < dayCount; i++) {
+            bytes32 uriHash = keccak256(bytes(attestations[i].uri));
+            bytes32 key = chain.attestationKey(
+                attestations[i].attester,
+                attestations[i].onBehalfOf,
+                attestations[i].docBlock,
+                uriHash
+            );
+            assertTrue(chain.attested(key));
+        }
+    }
+
+    function testBatchEmitsPerItemEvents() public {
+        (DocChain.DocAttestation[] memory attestations, bytes[] memory signatures) =
+            _chainedBatch(ATTESTER_PRIVATE_KEY, 20260420000000, 2);
+
+        for (uint256 i = 0; i < attestations.length; i++) {
+            vm.expectEmit(true, true, true, true, address(chain));
+            emit DocAttested(
+                attestations[i].docBlock.docChainId,
+                attestations[i].attester,
+                attestations[i].docBlock.docRef,
+                attestations[i].onBehalfOf,
+                address(this),
+                attestations[i].docBlock.parentHash,
+                chain.hashDocBlock(attestations[i].docBlock),
+                attestations[i].docBlock.contentHash,
+                keccak256(bytes(attestations[i].uri)),
+                attestations[i].uri
+            );
+        }
+
+        chain.attestBatch(attestations, signatures);
+    }
+
+    function testBatchMixedAttesters() public {
+        DocChain.DocAttestation[] memory attestations = new DocChain.DocAttestation[](2);
+        bytes[] memory signatures = new bytes[](2);
+        attestations[0] = _attestation(attester);
+        signatures[0] = _sign(ATTESTER_PRIVATE_KEY, attestations[0]);
+        attestations[1] = _attestation(vm.addr(OTHER_PRIVATE_KEY));
+        signatures[1] = _sign(OTHER_PRIVATE_KEY, attestations[1]);
+
+        (uint256 storedCount, uint256 skippedCount) = chain.attestBatch(attestations, signatures);
+
+        assertEq(storedCount, 2);
+        assertEq(skippedCount, 0);
+    }
+
+    function testBatchMixedSignatureFormats() public {
+        Mock1271Wallet wallet = new Mock1271Wallet();
+        DocChain.DocAttestation[] memory attestations = new DocChain.DocAttestation[](3);
+        bytes[] memory signatures = new bytes[](3);
+
+        attestations[0] = _attestation(attester);
+        signatures[0] = _sign(ATTESTER_PRIVATE_KEY, attestations[0]);
+        attestations[1] = _attestation(vm.addr(OTHER_PRIVATE_KEY));
+        signatures[1] = _signCompact(OTHER_PRIVATE_KEY, attestations[1]);
+        attestations[2] = _attestation(address(wallet));
+        signatures[2] = hex"c0ffee";
+        wallet.approve(chain.attestationDigest(attestations[2]), signatures[2]);
+
+        (uint256 storedCount, uint256 skippedCount) = chain.attestBatch(attestations, signatures);
+
+        assertEq(storedCount, 3);
+        assertEq(skippedCount, 0);
+    }
+
+    function testBatchSkipsDuplicateAlreadyOnChain() public {
+        (DocChain.DocAttestation[] memory attestations, bytes[] memory signatures) =
+            _chainedBatch(ATTESTER_PRIVATE_KEY, 20260420000000, 3);
+        chain.attestDoc(attestations[0], signatures[0]);
+
+        (uint256 storedCount, uint256 skippedCount) = chain.attestBatch(attestations, signatures);
+
+        assertEq(storedCount, 2);
+        assertEq(skippedCount, 1);
+    }
+
+    function testBatchIdempotentFullResubmission() public {
+        (DocChain.DocAttestation[] memory attestations, bytes[] memory signatures) =
+            _chainedBatch(ATTESTER_PRIVATE_KEY, 20260420000000, 4);
+
+        (uint256 firstStored,) = chain.attestBatch(attestations, signatures);
+        (uint256 secondStored, uint256 secondSkipped) = chain.attestBatch(attestations, signatures);
+
+        assertEq(firstStored, 4);
+        assertEq(secondStored, 0);
+        assertEq(secondSkipped, 4);
+    }
+
+    function testBatchSkipsExpiredDuplicate() public {
+        // An already-recorded item whose deadline has since passed must skip, not
+        // revert: resubmitting a partially landed batch stays safe at any later time.
+        DocChain.DocAttestation[] memory attestations = new DocChain.DocAttestation[](2);
+        bytes[] memory signatures = new bytes[](2);
+        attestations[0] = _attestation(attester);
+        signatures[0] = _sign(ATTESTER_PRIVATE_KEY, attestations[0]);
+        chain.attestDoc(attestations[0], signatures[0]);
+
+        vm.warp(attestations[0].deadline + 1);
+
+        attestations[1] = _attestation(attester);
+        attestations[1].docBlock.docRef = 20260421000000;
+        attestations[1].deadline = block.timestamp + 1 days;
+        signatures[1] = _sign(ATTESTER_PRIVATE_KEY, attestations[1]);
+
+        (uint256 storedCount, uint256 skippedCount) = chain.attestBatch(attestations, signatures);
+
+        assertEq(storedCount, 1);
+        assertEq(skippedCount, 1);
+    }
+
+    function testBatchSkipsDuplicateWithinBatch() public {
+        DocChain.DocAttestation[] memory attestations = new DocChain.DocAttestation[](2);
+        bytes[] memory signatures = new bytes[](2);
+        attestations[0] = _attestation(attester);
+        signatures[0] = _sign(ATTESTER_PRIVATE_KEY, attestations[0]);
+        attestations[1] = attestations[0];
+        signatures[1] = signatures[0];
+
+        (uint256 storedCount, uint256 skippedCount) = chain.attestBatch(attestations, signatures);
+
+        assertEq(storedCount, 1);
+        assertEq(skippedCount, 1);
+    }
+
+    function testBatchRevertsOnInvalidSignatureAndStoresNothing() public {
+        (DocChain.DocAttestation[] memory attestations, bytes[] memory signatures) =
+            _chainedBatch(ATTESTER_PRIVATE_KEY, 20260420000000, 3);
+        signatures[1] = _sign(OTHER_PRIVATE_KEY, attestations[1]);
+        bytes32 firstKey = chain.attestationKey(
+            attestations[0].attester,
+            attestations[0].onBehalfOf,
+            attestations[0].docBlock,
+            keccak256(bytes(attestations[0].uri))
+        );
+
+        vm.expectRevert(abi.encodeWithSelector(DocChain.InvalidSignature.selector, attester));
+        chain.attestBatch(attestations, signatures);
+
+        assertTrue(!chain.attested(firstKey));
+    }
+
+    function testBatchRevertsOnExpiredNonDuplicate() public {
+        (DocChain.DocAttestation[] memory attestations, bytes[] memory signatures) =
+            _chainedBatch(ATTESTER_PRIVATE_KEY, 20260420000000, 2);
+        attestations[1].deadline = block.timestamp - 1;
+        signatures[1] = _sign(ATTESTER_PRIVATE_KEY, attestations[1]);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                DocChain.DeadlineExpired.selector, attestations[1].deadline, block.timestamp
+            )
+        );
+        chain.attestBatch(attestations, signatures);
+    }
+
+    function testBatchRevertsOnLengthMismatch() public {
+        (DocChain.DocAttestation[] memory attestations,) =
+            _chainedBatch(ATTESTER_PRIVATE_KEY, 20260420000000, 2);
+        bytes[] memory signatures = new bytes[](1);
+        signatures[0] = _sign(ATTESTER_PRIVATE_KEY, attestations[0]);
+
+        vm.expectRevert(abi.encodeWithSelector(DocChain.BatchLengthMismatch.selector, 2, 1));
+        chain.attestBatch(attestations, signatures);
+    }
+
+    function testBatchRevertsOnEmpty() public {
+        DocChain.DocAttestation[] memory attestations = new DocChain.DocAttestation[](0);
+        bytes[] memory signatures = new bytes[](0);
+
+        vm.expectRevert(DocChain.EmptyBatch.selector);
+        chain.attestBatch(attestations, signatures);
+    }
+
+    function testBatchRevertsOnZeroAttester() public {
+        DocChain.DocAttestation[] memory attestations = new DocChain.DocAttestation[](1);
+        bytes[] memory signatures = new bytes[](1);
+        attestations[0] = _attestation(address(0));
+        signatures[0] = "";
+
+        vm.expectRevert(DocChain.InvalidAttester.selector);
+        chain.attestBatch(attestations, signatures);
+    }
+
+    function testBatchRevertsOnOverlongUri() public {
+        DocChain.DocAttestation[] memory attestations = new DocChain.DocAttestation[](1);
+        bytes[] memory signatures = new bytes[](1);
+        attestations[0] = _attestation(attester);
+        attestations[0].uri = string(new bytes(chain.MAX_URI_BYTES() + 1));
+        signatures[0] = "";
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                DocChain.UriTooLong.selector,
+                bytes(attestations[0].uri).length,
+                chain.MAX_URI_BYTES()
+            )
+        );
+        chain.attestBatch(attestations, signatures);
+    }
+
+    function testBatchCourierRecordedAsSubmitter() public {
+        address courier = address(0xBEEF);
+        (DocChain.DocAttestation[] memory attestations, bytes[] memory signatures) =
+            _chainedBatch(ATTESTER_PRIVATE_KEY, 20260420000000, 1);
+
+        vm.expectEmit(true, true, true, true, address(chain));
+        emit DocAttested(
+            attestations[0].docBlock.docChainId,
+            attestations[0].attester,
+            attestations[0].docBlock.docRef,
+            attestations[0].onBehalfOf,
+            courier,
+            attestations[0].docBlock.parentHash,
+            chain.hashDocBlock(attestations[0].docBlock),
+            attestations[0].docBlock.contentHash,
+            keccak256(bytes(attestations[0].uri)),
+            attestations[0].uri
+        );
+
+        vm.prank(courier);
+        chain.attestBatch(attestations, signatures);
+    }
+
+    function testAttestDocRevertsDuplicateStoredViaBatch() public {
+        (DocChain.DocAttestation[] memory attestations, bytes[] memory signatures) =
+            _chainedBatch(ATTESTER_PRIVATE_KEY, 20260420000000, 1);
+        chain.attestBatch(attestations, signatures);
+
+        bytes32 key = chain.attestationKey(
+            attestations[0].attester,
+            attestations[0].onBehalfOf,
+            attestations[0].docBlock,
+            keccak256(bytes(attestations[0].uri))
+        );
+
+        vm.expectRevert(abi.encodeWithSelector(DocChain.DuplicateAttestation.selector, key));
+        chain.attestDoc(attestations[0], signatures[0]);
+    }
+
+    function testBatchFiftyOneDayGenesisReplay() public {
+        // The late-join scenario this feature exists for: one node attests every
+        // archive day since genesis in a single transaction.
+        uint256 dayCount = 51;
+        (DocChain.DocAttestation[] memory attestations, bytes[] memory signatures) =
+            _chainedBatch(ATTESTER_PRIVATE_KEY, 20260420000000, dayCount);
+
+        uint256 gasBefore = gasleft();
+        (uint256 storedCount,) = chain.attestBatch(attestations, signatures);
+        uint256 gasUsed = gasBefore - gasleft();
+
+        assertEq(storedCount, dayCount);
+        // Keep the full from-genesis batch comfortably inside one block.
+        assertTrue(gasUsed < 6_000_000);
+
+        bytes32 lastKey = chain.attestationKey(
+            attestations[dayCount - 1].attester,
+            attestations[dayCount - 1].onBehalfOf,
+            attestations[dayCount - 1].docBlock,
+            keccak256(bytes(attestations[dayCount - 1].uri))
+        );
+        assertTrue(chain.attested(lastKey));
+    }
+
+    function testFuzzBatchAttestsEoa(uint8 rawCount, bytes32 contentSeed) public {
+        uint256 dayCount = (uint256(rawCount) % 8) + 1;
+        DocChain.DocAttestation[] memory attestations = new DocChain.DocAttestation[](dayCount);
+        bytes[] memory signatures = new bytes[](dayCount);
+        bytes32 parentHash = bytes32(0);
+
+        for (uint256 i = 0; i < dayCount; i++) {
+            attestations[i] = _attestation(attester);
+            attestations[i].docBlock.docRef = uint64(20260420000000 + i * 1_000_000);
+            attestations[i].docBlock.parentHash = parentHash;
+            attestations[i].docBlock.contentHash = keccak256(abi.encode(contentSeed, i));
+            signatures[i] = _sign(ATTESTER_PRIVATE_KEY, attestations[i]);
+            parentHash = chain.hashDocBlock(attestations[i].docBlock);
+        }
+
+        (uint256 storedCount, uint256 skippedCount) = chain.attestBatch(attestations, signatures);
+
+        assertEq(storedCount, dayCount);
+        assertEq(skippedCount, 0);
+        for (uint256 i = 0; i < dayCount; i++) {
+            bytes32 key = chain.attestationKey(
+                attestations[i].attester,
+                attestations[i].onBehalfOf,
+                attestations[i].docBlock,
+                keccak256(bytes(attestations[i].uri))
+            );
+            assertTrue(chain.attested(key));
+        }
+    }
+
+    /// @dev Build a parent-linked run of daily attestations, mirroring how an RSO
+    /// node attests consecutive archive days.
+    function _chainedBatch(uint256 privateKey, uint64 firstDocRef, uint256 dayCount)
+        private
+        returns (DocChain.DocAttestation[] memory attestations, bytes[] memory signatures)
+    {
+        attestations = new DocChain.DocAttestation[](dayCount);
+        signatures = new bytes[](dayCount);
+        address signer = vm.addr(privateKey);
+        bytes32 parentHash = bytes32(0);
+
+        for (uint256 i = 0; i < dayCount; i++) {
+            attestations[i] = _attestation(signer);
+            attestations[i].docBlock.docRef = uint64(firstDocRef + i * 1_000_000);
+            attestations[i].docBlock.parentHash = parentHash;
+            attestations[i].docBlock.contentHash = keccak256(abi.encode("day", i));
+            signatures[i] = _sign(privateKey, attestations[i]);
+            parentHash = chain.hashDocBlock(attestations[i].docBlock);
+        }
+    }
+
     function _attestation(address signer) private view returns (DocChain.DocAttestation memory) {
         return _attestationFor(signer, address(0));
     }
@@ -710,6 +1036,12 @@ contract DocChainTest {
     function assertEq(address actual, address expected) private pure {
         if (actual != expected) {
             revert("assert address eq failed");
+        }
+    }
+
+    function assertEq(uint256 actual, uint256 expected) private pure {
+        if (actual != expected) {
+            revert("assert uint256 eq failed");
         }
     }
 

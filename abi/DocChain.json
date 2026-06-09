@@ -8,6 +8,22 @@
         "inputs": [
             {
                 "internalType": "uint256",
+                "name": "attestationsLength",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "signaturesLength",
+                "type": "uint256"
+            }
+        ],
+        "name": "BatchLengthMismatch",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
                 "name": "deadline",
                 "type": "uint256"
             },
@@ -29,6 +45,11 @@
             }
         ],
         "name": "DuplicateAttestation",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "EmptyBatch",
         "type": "error"
     },
     {
@@ -143,6 +164,19 @@
     },
     {
         "inputs": [],
+        "name": "CONTRACT_VERSION",
+        "outputs": [
+            {
+                "internalType": "string",
+                "name": "",
+                "type": "string"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
         "name": "DOC_ATTESTATION_TYPEHASH",
         "outputs": [
             {
@@ -230,6 +264,84 @@
             }
         ],
         "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "components": [
+                    {
+                        "internalType": "address",
+                        "name": "attester",
+                        "type": "address"
+                    },
+                    {
+                        "internalType": "address",
+                        "name": "onBehalfOf",
+                        "type": "address"
+                    },
+                    {
+                        "components": [
+                            {
+                                "internalType": "bytes32",
+                                "name": "docChainId",
+                                "type": "bytes32"
+                            },
+                            {
+                                "internalType": "uint64",
+                                "name": "docRef",
+                                "type": "uint64"
+                            },
+                            {
+                                "internalType": "bytes32",
+                                "name": "parentHash",
+                                "type": "bytes32"
+                            },
+                            {
+                                "internalType": "bytes32",
+                                "name": "contentHash",
+                                "type": "bytes32"
+                            }
+                        ],
+                        "internalType": "struct DocChain.DocBlock",
+                        "name": "docBlock",
+                        "type": "tuple"
+                    },
+                    {
+                        "internalType": "string",
+                        "name": "uri",
+                        "type": "string"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "deadline",
+                        "type": "uint256"
+                    }
+                ],
+                "internalType": "struct DocChain.DocAttestation[]",
+                "name": "attestations",
+                "type": "tuple[]"
+            },
+            {
+                "internalType": "bytes[]",
+                "name": "signatures",
+                "type": "bytes[]"
+            }
+        ],
+        "name": "attestBatch",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "storedCount",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "skippedCount",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "nonpayable",
         "type": "function"
     },
     {

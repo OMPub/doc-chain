@@ -29,7 +29,12 @@ pragma solidity 0.8.35;
 /// @notice Append-only witness log for EIP-712 signed doc-chain attestations.
 contract DocChain {
     string public constant NAME = "Doc Chain";
+    // EIP-712 domain version. Stays "1": the DocAttestation struct and signing
+    // semantics are unchanged across contract releases, and cross-deployment
+    // replay is already impossible because verifyingContract is in the domain.
     string public constant VERSION = "1";
+    // Contract feature release. "2" adds attestBatch (batch courier submission).
+    string public constant CONTRACT_VERSION = "2";
 
     uint256 public constant MAX_URI_BYTES = 8192;
 
@@ -91,6 +96,8 @@ contract DocChain {
     error DuplicateAttestation(bytes32 attestationKey);
     error InvalidSignature(address attester);
     error InvalidSignatureLength(uint256 length);
+    error EmptyBatch();
+    error BatchLengthMismatch(uint256 attestationsLength, uint256 signaturesLength);
 
     constructor() {
         cachedChainId = block.chainid;
@@ -103,24 +110,58 @@ contract DocChain {
         external
         returns (bytes32 blockHash, bytes32 uriHash, bytes32 key)
     {
+        (, blockHash, uriHash, key) = _attestOne(attestation, signature, false);
+    }
+
+    /// @notice Submit many signed doc attestations in a single transaction.
+    /// @dev `msg.sender` is only the gas payer/courier; each item carries its own
+    /// attester signature, so a batch may mix attesters (e.g. a sweeper submitting
+    /// for several nodes, or a late-joining node attesting every day since genesis).
+    ///
+    /// Semantics: all-or-nothing on validity, idempotent on duplicates. Any invalid
+    /// item (bad signature, expired deadline, over-long uri, zero attester) reverts
+    /// the whole batch; an item whose attestation key is already recorded is skipped
+    /// without re-verification, so resubmitting a partially landed batch -- even one
+    /// whose already-recorded items have since passed their deadlines -- succeeds.
+    function attestBatch(DocAttestation[] calldata attestations, bytes[] calldata signatures)
+        external
+        returns (uint256 storedCount, uint256 skippedCount)
+    {
+        uint256 count = attestations.length;
+        if (count == 0) {
+            revert EmptyBatch();
+        }
+        if (count != signatures.length) {
+            revert BatchLengthMismatch(count, signatures.length);
+        }
+
+        for (uint256 i = 0; i < count; ++i) {
+            (bool stored,,,) = _attestOne(attestations[i], signatures[i], true);
+            unchecked {
+                if (stored) {
+                    ++storedCount;
+                } else {
+                    ++skippedCount;
+                }
+            }
+        }
+    }
+
+    /// @dev Shared validation/storage path for single and batch submission. With
+    /// `skipDuplicates`, an already-recorded key returns `stored = false` before any
+    /// further checks: a recorded key proves an identical claim (same attester,
+    /// onBehalfOf, doc block, and uri) already passed validation, so re-checking the
+    /// new copy's deadline or signature would only break idempotent resubmission.
+    function _attestOne(
+        DocAttestation calldata attestation,
+        bytes calldata signature,
+        bool skipDuplicates
+    ) private returns (bool stored, bytes32 blockHash, bytes32 uriHash, bytes32 key) {
         address attester = attestation.attester;
 
         // ecrecover returns address(0) for invalid signatures, so it cannot be a valid attester.
         if (attester == address(0)) {
             revert InvalidAttester();
-        }
-
-        // Signature deadlines intentionally use Ethereum's consensus timestamp.
-        // slither-disable-start timestamp
-        // forge-lint: disable-next-line(block-timestamp)
-        if (block.timestamp > attestation.deadline) {
-            revert DeadlineExpired(attestation.deadline, block.timestamp);
-        }
-        // slither-disable-end timestamp
-
-        uint256 uriLength = bytes(attestation.uri).length;
-        if (uriLength > MAX_URI_BYTES) {
-            revert UriTooLong(uriLength, MAX_URI_BYTES);
         }
 
         blockHash = _hashDocBlockFields(
@@ -141,7 +182,23 @@ contract DocChain {
         );
 
         if (attested[key]) {
+            if (skipDuplicates) {
+                return (false, blockHash, uriHash, key);
+            }
             revert DuplicateAttestation(key);
+        }
+
+        // Signature deadlines intentionally use Ethereum's consensus timestamp.
+        // slither-disable-start timestamp
+        // forge-lint: disable-next-line(block-timestamp)
+        if (block.timestamp > attestation.deadline) {
+            revert DeadlineExpired(attestation.deadline, block.timestamp);
+        }
+        // slither-disable-end timestamp
+
+        uint256 uriLength = bytes(attestation.uri).length;
+        if (uriLength > MAX_URI_BYTES) {
+            revert UriTooLong(uriLength, MAX_URI_BYTES);
         }
 
         bytes32 structHash = _hashAttestationFields(
@@ -151,6 +208,7 @@ contract DocChain {
         _requireValidSignature(attester, digest, signature);
 
         attested[key] = true;
+        stored = true;
 
         _emitDocAttested(attestation, blockHash, uriHash);
     }
@@ -290,8 +348,11 @@ contract DocChain {
             return;
         }
 
-        // EIP-1271 requires calling a wallet-defined validation hook.
-        // slither-disable-next-line low-level-calls
+        // EIP-1271 requires calling a wallet-defined validation hook. Reachable
+        // from the attestBatch loop, which is safe: a batch submitter chooses its
+        // own batch contents, so a misbehaving wallet can only revert a batch that
+        // voluntarily includes it, and the call is a staticcall (no reentrancy).
+        // slither-disable-next-line low-level-calls,calls-loop
         (bool ok, bytes memory result) =
             attester.staticcall(abi.encodeWithSelector(EIP1271_MAGIC_VALUE, digest, signature));
 
