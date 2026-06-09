@@ -152,5 +152,44 @@ class AttestationScriptsTest(unittest.TestCase):
             self.assertEqual(subprocess_error_detail(error), "failed with <redacted>")
 
 
+
+class AttestationScriptBatchTest(unittest.TestCase):
+    def test_attest_batch_calldata_matches_reference_library(self) -> None:
+        from submit_attestation import attest_batch_calldata as script_batch
+
+        repo_root = Path(__file__).resolve().parents[1]
+        sys.path.insert(0, str(repo_root / "reference"))
+        try:
+            from docchain.attestation import attest_batch_calldata as reference_batch
+        finally:
+            sys.path.pop(0)
+
+        attestation = {
+            "attester": "0x1111111111111111111111111111111111111111",
+            "onBehalfOf": "0x0000000000000000000000000000000000000000",
+            "docBlock": {
+                "docChainId": "0x" + "33" * 32,
+                "docRef": 20260420000000,
+                "parentHash": "0x" + "00" * 32,
+                "contentHash": "0x" + "55" * 32,
+            },
+            "uri": "ar://tx/abc",
+            "deadline": 1781045868,
+        }
+        items = [(attestation, "0x" + "ab" * 65), (attestation, "0x" + "cd" * 64)]
+
+        self.assertEqual(script_batch(items), reference_batch(items))
+
+    def test_attest_batch_calldata_matches_live_transaction_fixture(self) -> None:
+        import json
+
+        from submit_attestation import attest_batch_calldata
+
+        fixture_path = Path(__file__).resolve().parents[1] / "fixtures" / "attest-batch-calldata.json"
+        fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+        items = list(zip(fixture["attestations"], fixture["signatures"]))
+
+        self.assertEqual(attest_batch_calldata(items), fixture["calldata"])
+
 if __name__ == "__main__":
     unittest.main()
