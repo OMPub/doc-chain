@@ -3,10 +3,10 @@
   "version": "2",
   "chainId": 11155111,
   "network": "sepolia",
-  "address": "0x2c66585E7b60A20563a3fd2B7a4D75Ae5baa5437",
-  "transactionHash": "0x46ed33d3740269e23f9032deb650c49c0ef8e2eb5c40faffb47d7499f69b422e",
+  "address": "0x867FcC4f0339009043E9F6e554DD516Bcf1bcaa9",
+  "transactionHash": "0x118af1ecb27d23f969f45bb0d7212763bdf2c29e718b2f5c5bbf926940e97ec0",
   "deployer": "0x21e753651C9e3655e5dEeDdabbdD4a99629A2f6e",
-  "blockNumber": 11025284,
+  "blockNumber": 11026268,
   "compiler": {
     "solc": "0.8.35",
     "evmVersion": "paris",
@@ -14,9 +14,8 @@
     "optimizerRuns": 200
   },
   "source": {
-    "commit": "0d15bf5",
-    "verifiedUrl": "https://sepolia.etherscan.io/address/0x2c66585e7b60a20563a3fd2b7a4d75ae5baa5437#code"
+    "commit": "ab39d36",
+    "verifiedUrl": "https://sepolia.etherscan.io/address/0x867fcc4f0339009043e9f6e554dd516bcf1bcaa9#code"
   },
-  "deployedAt": "2026-06-09T21:55:00Z",
-  "supersedes": "deployments/sepolia-v1.json"
+  "deployedAt": "2026-06-10T01:12:00Z"
 }
